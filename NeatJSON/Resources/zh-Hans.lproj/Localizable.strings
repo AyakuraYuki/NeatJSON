@@ -1,0 +1,75 @@
+/* NeatJSON — 简体中文 */
+
+"pane.input.title" = "输入";
+"pane.output.title" = "输出";
+
+"action.clear" = "清空";
+"action.clear.help" = "清空输入";
+"action.copy" = "复制";
+"action.copy.help" = "复制格式化结果";
+"action.diff" = "对比差异";
+"action.diff.help" = "对比输入与输出";
+"action.close" = "关闭";
+"action.reformat" = "重新格式化";
+"action.sort-keys" = "按 Key 排序";
+
+"picker.indent" = "缩进";
+
+"status.waiting" = "等待输入";
+"status.formatted" = "已格式化并排序";
+"status.stats" = "输入 %lld 行 · 输出 %lld 行";
+
+"diff.title" = "差异对比";
+"diff.left.title" = "输入（已规范化）";
+"diff.right.title" = "输出（键已排序）";
+"diff.note.normalized" = "已按当前缩进重排输入，差异仅反映键顺序与内容变化";
+"diff.computing" = "正在计算差异…";
+"diff.identical" = "没有差异 —— 键顺序已经一致";
+"diff.collapsed" = "%lld 行未变更";
+"diff.collapse.hint" = "点击收起";
+"diff.expand.hint" = "点击展开";
+"diff.degraded" = "已简化对比";
+"diff.exact" = "精确对比";
+"diff.exact.help" = "不做简化重新计算。可能耗时较久，关闭窗口即可取消。";
+
+
+"toolbar.menu.json" = "JSON";
+
+"settings.tab.general" = "通用";
+"settings.tab.shortcuts" = "快捷键";
+"settings.appearance.title" = "外观";
+"settings.appearance.system" = "跟随系统";
+"settings.appearance.light" = "日间";
+"settings.appearance.dark" = "夜间";
+"settings.shortcuts.section.toolbar" = "工具栏";
+"settings.shortcuts.section.editing" = "标准编辑";
+
+"shortcut.edit.find" = "查找";
+"shortcut.edit.find-next" = "查找下一个";
+"shortcut.edit.find-previous" = "查找上一个";
+"shortcut.edit.undo" = "撤销";
+"shortcut.edit.redo" = "重做";
+"shortcut.edit.cut" = "剪切";
+"shortcut.edit.copy" = "复制";
+"shortcut.edit.paste" = "粘贴";
+"shortcut.edit.select-all" = "全选";
+
+"error.at-position" = "第 %lld 行第 %lld 列：%@";
+"error.at-line" = "第 %lld 行：%@";
+
+"error.empty-input" = "输入意外结束，期望一个值";
+"error.trailing-characters" = "JSON 值后有多余字符";
+"error.unexpected-char" = "非法字符，期望一个值";
+"error.expect-object-key" = "期望对象键字符串";
+"error.expect-colon" = "期望键后的 ':'";
+"error.expect-value" = "期望一个值";
+"error.expect-comma-or-brace" = "期望 ',' 或 '}'";
+"error.expect-comma-or-bracket" = "期望 ',' 或 ']'";
+"error.unterminated-string" = "字符串未闭合";
+"error.invalid-escape" = "非法转义序列";
+"error.invalid-unicode-escape" = "非法 \\u 转义序列";
+"error.lone-surrogate" = "未配对的 Unicode 代理项";
+"error.control-char" = "字符串中存在未转义的控制字符";
+"error.invalid-literal" = "非法字面量，期望 true、false 或 null";
+"error.invalid-number" = "非法数字";
+"error.too-deep" = "嵌套层级过深（超过 %lld 层）";

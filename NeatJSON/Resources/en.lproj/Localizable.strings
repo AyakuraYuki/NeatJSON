@@ -1,0 +1,75 @@
+/* NeatJSON — English */
+
+"pane.input.title" = "Input";
+"pane.output.title" = "Output";
+
+"action.clear" = "Clear";
+"action.clear.help" = "Clear input";
+"action.copy" = "Copy";
+"action.copy.help" = "Copy formatted result";
+"action.diff" = "Compare";
+"action.diff.help" = "Compare input and output";
+"action.close" = "Close";
+"action.reformat" = "Reformat";
+"action.sort-keys" = "Sort Keys";
+
+"picker.indent" = "Indent";
+
+"status.waiting" = "Waiting for input";
+"status.formatted" = "Formatted & sorted";
+"status.stats" = "%lld in · %lld out";
+
+"diff.title" = "Differences";
+"diff.left.title" = "Input (normalized)";
+"diff.right.title" = "Output (keys sorted)";
+"diff.note.normalized" = "Input is reformatted with the current indentation; the diff shows key order and content changes only.";
+"diff.computing" = "Computing differences…";
+"diff.identical" = "No differences — key order already matches.";
+"diff.collapsed" = "%lld unchanged lines";
+"diff.collapse.hint" = "Click to collapse";
+"diff.expand.hint" = "Click to expand";
+"diff.degraded" = "Simplified";
+"diff.exact" = "Exact compare";
+"diff.exact.help" = "Recompute without simplification. May take a while; closing this window cancels it.";
+
+
+"toolbar.menu.json" = "JSON";
+
+"settings.tab.general" = "General";
+"settings.tab.shortcuts" = "Shortcuts";
+"settings.appearance.title" = "Appearance";
+"settings.appearance.system" = "System";
+"settings.appearance.light" = "Light";
+"settings.appearance.dark" = "Dark";
+"settings.shortcuts.section.toolbar" = "Toolbar";
+"settings.shortcuts.section.editing" = "Standard Editing";
+
+"shortcut.edit.find" = "Find";
+"shortcut.edit.find-next" = "Find Next";
+"shortcut.edit.find-previous" = "Find Previous";
+"shortcut.edit.undo" = "Undo";
+"shortcut.edit.redo" = "Redo";
+"shortcut.edit.cut" = "Cut";
+"shortcut.edit.copy" = "Copy";
+"shortcut.edit.paste" = "Paste";
+"shortcut.edit.select-all" = "Select All";
+
+"error.at-position" = "Line %lld, Column %lld: %@";
+"error.at-line" = "Line %lld: %@";
+
+"error.empty-input" = "Unexpected end of input, expected a value";
+"error.trailing-characters" = "Unexpected characters after the JSON value";
+"error.unexpected-char" = "Unexpected character, expected a value";
+"error.expect-object-key" = "Expected an object key string";
+"error.expect-colon" = "Expected ':' after object key";
+"error.expect-value" = "Expected a value";
+"error.expect-comma-or-brace" = "Expected ',' or '}'";
+"error.expect-comma-or-bracket" = "Expected ',' or ']'";
+"error.unterminated-string" = "Unterminated string";
+"error.invalid-escape" = "Invalid escape sequence";
+"error.invalid-unicode-escape" = "Invalid \\u escape sequence";
+"error.lone-surrogate" = "Unpaired Unicode surrogate";
+"error.control-char" = "Unescaped control character in string";
+"error.invalid-literal" = "Invalid literal, expected true, false or null";
+"error.invalid-number" = "Invalid number";
+"error.too-deep" = "Nesting is too deep (over %lld levels)";

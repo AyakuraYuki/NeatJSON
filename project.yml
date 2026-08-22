@@ -1,0 +1,68 @@
+name: NeatJSON
+options:
+  bundleIdPrefix: com.ayakurayuki
+  deploymentTarget:
+    macOS: "26.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+targets:
+  NeatJSON:
+    type: application
+    platform: macOS
+    sources:
+      - path: NeatJSON/Sources
+      - path: NeatJSON/Resources
+    info:
+      path: NeatJSON/Info.plist
+      properties:
+        CFBundleDisplayName: NeatJSON
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "26.0"
+        LSApplicationCategoryType: public.app-category.developer-tools
+        CFBundleLocalizations: [en, zh-Hans]
+        NSHumanReadableCopyright: ""
+        NSMainStoryboard: ""
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+
+  IconComposer:
+    type: tool
+    platform: macOS
+    sources:
+      - path: IconComposer
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+
+  NeatJSONTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: NeatJSON
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  NeatJSON:
+    build:
+      targets:
+        NeatJSON: all
+        NeatJSONTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - NeatJSONTests
