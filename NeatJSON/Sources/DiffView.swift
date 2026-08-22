@@ -27,6 +27,7 @@ struct DiffView: View {
     let indent: IndentStyle
 
     @Environment(\.dismiss) private var dismiss
+    @Namespace private var headerGlassNamespace
 
     /// nil = 正在后台计算
     @State private var document: DiffDocument?
@@ -103,21 +104,27 @@ struct DiffView: View {
                 .lineLimit(1)
             }
             Spacer()
-            if let document {
-                if document.degraded {
-                    degradedControls
-                }
+            // 只把两个手写 .glassEffect() 的自定义视图（降级徽章 + 统计
+            // 胶囊）用容器组合：Apple 建议多个玻璃视图要用
+            // GlassEffectContainer 组合以获得最佳渲染表现，并在它们
+            // 出现/消失时协调走形变过渡而不是突然蹦出来。spacing 用 8，
+            // 和内部 HStack 的间距一致，避免静止时也非预期地粘在一起。
+            //
+            // "Exact compare" 和 "Close" 留在容器外、维持原样：它们用的
+            // 是系统 .buttonStyle(.glass)，是系统自己管理优化过的原生
+            // 玻璃控件，不是需要容器帮忙合成/形变的手写玻璃形状。
+            GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
-                    Label("\(document.insertions)", systemImage: "plus")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.green)
-                    Label("\(document.deletions)", systemImage: "minus")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.red)
+                    if let document, document.degraded {
+                        degradedBadge
+                    }
+                    if let document {
+                        statsCapsule(document)
+                    }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .glassEffect(.regular, in: .capsule)
+            }
+            if let document, document.degraded {
+                exactCompareButton
             }
             Button {
                 dismiss()
@@ -133,9 +140,8 @@ struct DiffView: View {
         .padding(.vertical, 10)
     }
 
-    /// 降级提示 + 精确重算入口。
-    @ViewBuilder
-    private var degradedControls: some View {
+    /// 降级提示徽章（手写玻璃胶囊，进容器）。
+    private var degradedBadge: some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 10))
@@ -146,7 +152,12 @@ struct DiffView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .glassEffect(.regular, in: .capsule)
+        .glassEffectID("degraded", in: headerGlassNamespace)
+        .glassEffectTransition(.matchedGeometry)
+    }
 
+    /// 精确重算入口（系统玻璃按钮，容器外）。
+    private var exactCompareButton: some View {
         Button {
             limits = .exact
         } label: {
@@ -159,6 +170,23 @@ struct DiffView: View {
                 defaultValue: "Recompute without simplification. May take a while; closing this window cancels it."
             )
         )
+    }
+
+    /// 插入/删除行数统计胶囊（手写玻璃胶囊，进容器）。
+    private func statsCapsule(_ document: DiffDocument) -> some View {
+        HStack(spacing: 8) {
+            Label("\(document.insertions)", systemImage: "plus")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.green)
+            Label("\(document.deletions)", systemImage: "minus")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.red)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .glassEffect(.regular, in: .capsule)
+        .glassEffectID("stats", in: headerGlassNamespace)
+        .glassEffectTransition(.matchedGeometry)
     }
 
     private var columnTitles: some View {

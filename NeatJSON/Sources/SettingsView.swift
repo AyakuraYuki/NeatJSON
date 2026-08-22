@@ -4,9 +4,9 @@ import SwiftUI
 /// 外观模式：日间 / 夜间 / 跟随系统。
 ///
 /// `rawValue` 直接落地进 `@AppStorage`；`nsAppearance` 为 nil 表示跟随系统。
-/// 外观通过 `WindowAppearanceConfigurator` 以 `NSWindow.appearance` 应用
-/// （不用 Scene 级 `.preferredColorScheme`，原因见该类型的注释）；窗口
-/// 外观变化会级联触发 `JSONTextView.viewDidChangeEffectiveAppearance`
+/// 外观通过 `AppearanceController.apply` 以 `NSApplication.appearance` 应用
+/// （不用 Scene 级 `.preferredColorScheme`，原因见该类型的注释）；外观
+/// 变化会级联触发 `JSONTextView.viewDidChangeEffectiveAppearance`
 /// （见 JSONEditorView.swift），编辑器配色随之切换。
 enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
     case system
@@ -50,20 +50,18 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            generalTab
-                .tabItem {
-                    Label(
-                        String(localized: "settings.tab.general", defaultValue: "General"),
-                        systemImage: "gearshape"
-                    )
-                }
-            shortcutsTab
-                .tabItem {
-                    Label(
-                        String(localized: "settings.tab.shortcuts", defaultValue: "Shortcuts"),
-                        systemImage: "keyboard"
-                    )
-                }
+            generalTab.tabItem {
+                Label(
+                    String(localized: "settings.tab.general", defaultValue: "General"),
+                    systemImage: "gearshape"
+                )
+            }
+            shortcutsTab.tabItem {
+                Label(
+                    String(localized: "settings.tab.shortcuts", defaultValue: "Shortcuts"),
+                    systemImage: "keyboard"
+                )
+            }
         }
         .frame(width: 460, height: 360)
     }
@@ -82,6 +80,7 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
         }
+        .font(.system(size: 14))
         .padding(24)
     }
 
@@ -138,7 +137,7 @@ struct SettingsView: View {
     private func shortcutSection(title: String, rows: [(label: String, keys: String)]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
             VStack(spacing: 4) {
                 ForEach(rows, id: \.label) { row in
@@ -149,14 +148,12 @@ struct SettingsView: View {
     }
 
     private func shortcutRow(label: String, keys: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 12))
+        HStack(spacing: 12) {
+            Text(label).font(.system(size: 13))
             Spacer()
-            GlassBadge {
-                Text(keys)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-            }
+            Text(keys)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
         }
     }
 }

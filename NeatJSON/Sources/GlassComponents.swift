@@ -1,49 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// 把所在窗口的外观切到指定模式。
-///
-/// 刻意走 AppKit（`NSWindow.appearance`）而不是 `.preferredColorScheme`：
-/// Scene 级 colorScheme 覆盖在切换瞬间会重建整棵 SwiftUI 视图树，
-/// 与窗口外观翻转竞争——实测（macOS 26）卡片材质冻结在旧外观、
-/// 设置页 Form 内容整块消失，直到下一次交互才重绘。直接设置窗口
-/// appearance 只翻转外观、不重建视图树，材质与动态颜色随
-/// `viewDidChangeEffectiveAppearance` 通知可靠更新。
-struct WindowAppearanceConfigurator: NSViewRepresentable {
-    let mode: AppearanceMode
-
-    func makeNSView(context: Context) -> AnchorView {
-        AnchorView()
-    }
-
-    func updateNSView(_ nsView: AnchorView, context: Context) {
-        nsView.mode = mode
-    }
-
-    /// 不绘制、不接收事件的锚点视图，只负责把模式写到窗口上。
-    final class AnchorView: NSView {
-        var mode: AppearanceMode = .system {
-            didSet {
-                guard mode != oldValue else { return }
-                apply()
-            }
-        }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            apply()
-        }
-
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-        private func apply() {
-            // nil 表示跟随系统
-            window?.appearance = mode.nsAppearance
-        }
-    }
-}
-
 /// 玻璃徽章：状态指示用的小型 Liquid Glass 元件。
+///
+/// 不用 `.interactive()`：那是给"响应触控/指针交互"的可点击控件用的
+/// （文档原话，和标准玻璃按钮同款反馈）。这里的徽章始终是纯展示型的
+/// 状态指示，从不可点，套上 `.interactive()` 只会让它看起来能点、
+/// 点了却没反应，是体验上的不一致。
 struct GlassBadge<Content: View>: View {
     var tint: Color? = nil
     @ViewBuilder var content: () -> Content
@@ -55,7 +18,7 @@ struct GlassBadge<Content: View>: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .glassEffect(
-            (tint.map { Glass.regular.tint($0) } ?? .regular).interactive(),
+            tint.map { Glass.regular.tint($0) } ?? .regular,
             in: .capsule
         )
     }
@@ -65,12 +28,37 @@ struct GlassBadge<Content: View>: View {
 /// 两侧统计区等宽，徽章因此在窗口正中。
 struct StatusBarView: View {
     @Environment(AppModel.self) private var model
+    @Namespace private var badgeNamespace
+
+    /// 状态徽章的三种形态。承担 `glassEffectID` 需要的稳定身份值
+    /// （API 要求 `Hashable & Sendable`，不能只满足 `Equatable`）。
+    private enum BadgeState: Hashable {
+        case waiting
+        case success
+        case error(String)
+    }
+
+    private var badgeState: BadgeState {
+        if let error = model.lastError {
+            .error(error.localizedDescription)
+        } else if model.outputText.isEmpty {
+            .waiting
+        } else {
+            .success
+        }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
             inputStats
                 .frame(maxWidth: .infinity, alignment: .leading)
-            statusBadge
+            // 包一层容器只是为了给 glassEffectID 提供协调上下文——三个
+            // 状态始终只有一个在场，不是要组合多个同时存在的玻璃形状。
+            // 配合 .matchedGeometry，切换状态时胶囊原地形变、内容交叉
+            // 淡出，而不是现在这种硬切换。
+            GlassEffectContainer {
+                statusBadge
+            }
             outputStats
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -81,18 +69,21 @@ struct StatusBarView: View {
 
     @ViewBuilder
     private var statusBadge: some View {
-        if let error = model.lastError {
+        switch badgeState {
+        case .error(let message):
             GlassBadge(tint: .red) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(.white)
-                Text(error.localizedDescription)
+                Text(message)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-        } else if model.outputText.isEmpty {
+            .glassEffectID(BadgeState.error(message), in: badgeNamespace)
+            .glassEffectTransition(.matchedGeometry)
+        case .waiting:
             GlassBadge {
                 Image(systemName: "circle.dotted")
                     .font(.system(size: 11))
@@ -101,7 +92,9 @@ struct StatusBarView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
-        } else {
+            .glassEffectID(BadgeState.waiting, in: badgeNamespace)
+            .glassEffectTransition(.matchedGeometry)
+        case .success:
             GlassBadge(tint: .green) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 11))
@@ -110,6 +103,8 @@ struct StatusBarView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
             }
+            .glassEffectID(BadgeState.success, in: badgeNamespace)
+            .glassEffectTransition(.matchedGeometry)
         }
     }
 

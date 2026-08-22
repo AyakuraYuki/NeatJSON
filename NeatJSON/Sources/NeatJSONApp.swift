@@ -9,7 +9,13 @@ struct NeatJSONApp: App {
         WindowGroup {
             MainEditorView()
                 .environment(appModel)
-                .background(WindowAppearanceConfigurator(mode: appearanceMode))
+                // 只需挂在主窗口上：AppearanceController.apply 内部会
+                // 遍历 NSApp.windows，设置窗口当时若打开着会一起重绘；
+                // 若还没打开，它被打开的那一刻就已经继承了全局值。
+                .task { AppearanceController.apply(appearanceMode) }
+                .onChange(of: appearanceMode) { _, newValue in
+                    AppearanceController.apply(newValue)
+                }
         }
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified)
@@ -23,7 +29,6 @@ struct NeatJSONApp: App {
 
         Settings {
             SettingsView()
-                .background(WindowAppearanceConfigurator(mode: appearanceMode))
         }
     }
 }

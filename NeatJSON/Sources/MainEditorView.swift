@@ -158,14 +158,14 @@ struct MainEditorView: View {
             selection: Bindable(model).indent
         ) {
             ForEach(IndentStyle.allCases) { style in
-                Text(style.label)
-                    .tag(style)
-                    .glassEffect()
+                Text(style.label).tag(style)
             }
         }
         .pickerStyle(.segmented)
         .frame(width: 130)
-        .glassEffect()
+        // 不再额外套 .glassEffect()：分段 Picker 放进工具栏时本身已经是
+        // 系统原生渲染的 Liquid Glass 外观，再叠一层是重复的玻璃层，
+        // 属于 Apple 文档明确提醒过的「过多玻璃效果」反模式。
     }
 
     private func copyOutput() {
