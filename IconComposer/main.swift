@@ -53,6 +53,7 @@ let sizes: [(name: String, size: Int)] = [
 for entry in sizes {
     savePNG(resize(master, to: entry.size), to: outputDir.appendingPathComponent(entry.name))
 }
+
 print("iconset written to \(outputDir.path)")
 
 // MARK: - 绘制
@@ -85,10 +86,14 @@ func glyphCenter(size: CGFloat) -> CGPoint {
 }
 
 /// 括号脊柱到中心的水平距离。
-func braceHalfSpan(size: CGFloat) -> CGFloat { size * 0.232 }
+func braceHalfSpan(size: CGFloat) -> CGFloat {
+    size * 0.232
+}
 
 /// 白色笔画的统一粗细。
-func strokeWeight(size: CGFloat) -> CGFloat { size * 0.062 }
+func strokeWeight(size: CGFloat) -> CGFloat {
+    size * 0.062
+}
 
 /// 满幅竖向渐变。不画圆角：交给系统的 squircle 蒙版。
 func drawBackground(ctx: CGContext, size: CGFloat) {
@@ -150,9 +155,9 @@ func bracePath(
     thickness: CGFloat
 ) -> CGPath {
     let halfH = height / 2
-    let corner = thickness * 0.55         // 横臂转入脊柱的圆角
-    let notchDepth = thickness * 1.05     // 中部凸尖突出深度
-    let notchSpan = thickness * 0.90      // 凸尖在脊柱上占的高度
+    let corner = thickness * 0.55 // 横臂转入脊柱的圆角
+    let notchDepth = thickness * 1.05 // 中部凸尖突出深度
+    let notchSpan = thickness * 0.90 // 凸尖在脊柱上占的高度
 
     let path = CGMutablePath()
     path.move(to: CGPoint(x: armLength, y: halfH))

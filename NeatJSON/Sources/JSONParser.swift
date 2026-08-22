@@ -15,12 +15,12 @@ public struct JSONParseError: Error, Equatable, Sendable {
     /// 形如「第 3 行第 5 列：期望 ',' 或 '}'」的本地化描述。
     public var localizedDescription: String {
         switch (line, column) {
-        case let (l?, c?):
+        case (let l?, let c?):
             String(
                 localized: "error.at-position",
                 defaultValue: "Line \(l), Column \(c): \(message)"
             )
-        case let (l?, nil):
+        case (let l?, nil):
             String(
                 localized: "error.at-line",
                 defaultValue: "Line \(l): \(message)"
@@ -77,14 +77,21 @@ private struct Scanner {
     var line: Int = 0
     /// 当前标量所在列（0 起）。
     var column: Int = 0
+    /// 最近一次换行符在上一行的列（1 起）。advance 吃掉 `\n` 后
+    /// line/column 已指向下一行开头，靠它把错误位置回退到上一行末尾。
+    var previousLineColumn: Int = 0
 
     init(scalars: ContiguousArray<Unicode.Scalar>) {
         self.scalars = scalars
     }
 
-    var isAtEnd: Bool { index >= scalars.count }
+    var isAtEnd: Bool {
+        index >= scalars.count
+    }
 
-    var peek: Unicode.Scalar? { index < scalars.count ? scalars[index] : nil }
+    var peek: Unicode.Scalar? {
+        index < scalars.count ? scalars[index] : nil
+    }
 
     /// 推进一个标量并维护行/列。
     mutating func advance() -> Unicode.Scalar? {
@@ -92,9 +99,11 @@ private struct Scanner {
         let scalar = scalars[index]
         index += 1
         if scalar == "\n" {
+            previousLineColumn = column + 1
             line += 1
             column = 0
-        } else {
+        }
+        else {
             column += 1
         }
         return scalar
@@ -106,23 +115,27 @@ private struct Scanner {
         }
     }
 
-    /// 生成错误；`afterAdvance` 时行列已指向出错标量的下一个位置，需回退一列。
-    func error(_ messageKey: String, hasPosition: Bool = true) -> JSONParseError {
-        guard hasPosition else {
-            return JSONParseError(message: String(localized: String.LocalizationValue(messageKey)))
-        }
-        return JSONParseError(
-            message: String(localized: String.LocalizationValue(messageKey)),
-            line: line + 1,
-            column: column + 1
-        )
-    }
-
-    func error(_ messageKey: String, _ args: [CVarArg], hasPosition: Bool = true) -> JSONParseError {
-        let format = String(localized: String.LocalizationValue(messageKey))
-        let message = String(format: format, locale: Locale.current, arguments: args)
+    /// 生成错误。行列号约定：`line`/`column` 始终指向**下一个待读标量**。
+    ///
+    /// - peek 型错误（出错字符还没消费）：直接 `line + 1, column + 1` 即指向它。
+    /// - advance 型错误（出错字符刚被 `advance()` 吃掉）：传 `afterAdvance: true`
+    ///   回退——普通字符退一列；刚吃掉的是 `\n` 时退到上一行末尾
+    ///   （此时 `column == 0`，上一行行号为已自增的 `line`，列取 `previousLineColumn`）。
+    func error(
+        _ messageKey: String,
+        afterAdvance: Bool = false,
+        hasPosition: Bool = true
+    ) -> JSONParseError {
+        let message = String(localized: String.LocalizationValue(messageKey))
         guard hasPosition else {
             return JSONParseError(message: message)
+        }
+        if afterAdvance {
+            if column == 0 {
+                // 刚消费的是 \n：出错位置在上一行末尾
+                return JSONParseError(message: message, line: line, column: previousLineColumn)
+            }
+            return JSONParseError(message: message, line: line + 1, column: column)
         }
         return JSONParseError(message: message, line: line + 1, column: column + 1)
     }
@@ -148,7 +161,7 @@ private struct Scanner {
         case "[":
             return try parseArray(depth: depth)
         case "\"":
-            return .string(try parseString())
+            return try .string(parseString())
         case "t":
             try parseLiteral("true")
             return .bool(true)
@@ -159,7 +172,7 @@ private struct Scanner {
             try parseLiteral("null")
             return .null
         case "-", "0"..."9":
-            return .number(try parseNumber())
+            return try .number(parseNumber())
         default:
             throw error("error.unexpected-char")
         }
@@ -243,8 +256,12 @@ private struct Scanner {
 
     mutating func parseLiteral(_ literal: String) throws {
         for expected in literal.unicodeScalars {
-            guard let actual = advance(), actual == expected else {
+            guard let actual = advance() else {
+                // 输入中途结束：位置指向「应该有字符」的地方
                 throw error("error.invalid-literal")
+            }
+            guard actual == expected else {
+                throw error("error.invalid-literal", afterAdvance: true)
             }
         }
     }
@@ -265,7 +282,9 @@ private struct Scanner {
                 index = cursor + 1
                 return lexeme
             }
-            if scalar == "\\" || scalar.value < 0x20 { break }
+            if scalar == "\\" || scalar.value < 0x20 {
+                break
+            }
             cursor += 1
         }
         return try parseStringSlow()
@@ -274,7 +293,9 @@ private struct Scanner {
     /// 含转义（或非法控制字符）的字符串。`index` 仍指向开引号之后。
     mutating func parseStringSlow() throws -> String {
         var result = String.UnicodeScalarView()
-        var lowSurrogate: Unicode.Scalar?
+        /// 已读到、正等待低位代理来组合的高位代理码点。
+        /// 代理区码点不是合法 Unicode.Scalar，只能以 UInt32 暂存。
+        var pendingHighSurrogate: UInt32?
 
         func appendScalar(_ scalar: Unicode.Scalar) {
             result.append(scalar)
@@ -285,19 +306,20 @@ private struct Scanner {
                 throw error("error.unterminated-string")
             }
             if scalar == "\"" {
-                if let low = lowSurrogate {
-                    _ = low // 孤立低位代理
-                    throw JSONParseError(
-                        message: String(localized: "error.lone-surrogate"),
-                        line: line + 1,
-                        column: column + 1
-                    )
+                // 字符串结束还挂着高位代理 —— 孤立
+                guard pendingHighSurrogate == nil else {
+                    throw error("error.lone-surrogate", afterAdvance: true)
                 }
                 return String(result)
             }
             if scalar == "\\" {
                 guard let escape = advance() else {
                     throw error("error.unterminated-string")
+                }
+                // 高位代理之后只允许紧跟 \u 形式的低位代理；
+                // 接其他任何转义，高位代理孤立。
+                if escape != "u", pendingHighSurrogate != nil {
+                    throw error("error.lone-surrogate", afterAdvance: true)
                 }
                 switch escape {
                 case "\"": appendScalar("\"")
@@ -309,57 +331,40 @@ private struct Scanner {
                 case "r": appendScalar("\r")
                 case "t": appendScalar("\t")
                 case "u":
-                    let parsed = try parseUnicodeEscape()
-                    if case .high(let high) = parsed {
-                        if lowSurrogate != nil {
+                    switch try parseUnicodeEscape() {
+                    case .surrogate(let codePoint) where codePoint <= 0xDBFF:
+                        // 高位代理：暂存，等低位代理来组合
+                        guard pendingHighSurrogate == nil else {
                             // 两个连续高位代理，前者孤立
-                            throw JSONParseError(
-                                message: String(localized: "error.lone-surrogate"),
-                                line: line + 1,
-                                column: column + 1
-                            )
+                            throw error("error.lone-surrogate", afterAdvance: true)
                         }
-                        lowSurrogate = high
-                    } else if case .scalar(let scalar) = parsed {
-                        if let low = lowSurrogate {
-                            // 高+低代理对 → 组合
-                            guard let combined = combineSurrogates(high: low, low: scalar) else {
-                                throw JSONParseError(
-                                    message: String(localized: "error.lone-surrogate"),
-                                    line: line + 1,
-                                    column: column + 1
-                                )
-                            }
-                            lowSurrogate = nil
-                            appendScalar(combined)
-                        } else if isLowSurrogate(scalar) {
-                            // 孤立低位代理
-                            throw JSONParseError(
-                                message: String(localized: "error.lone-surrogate"),
-                                line: line + 1,
-                                column: column + 1
-                            )
-                        } else {
-                            appendScalar(scalar)
+                        pendingHighSurrogate = codePoint
+                    case .surrogate(let codePoint):
+                        // 低位代理：必须紧跟在高位代理之后
+                        guard let high = pendingHighSurrogate else {
+                            throw error("error.lone-surrogate", afterAdvance: true)
                         }
+                        pendingHighSurrogate = nil
+                        appendScalar(combineSurrogates(high: high, low: codePoint))
+                    case .scalar(let scalar):
+                        // 高位代理后接了普通标量 —— 高位孤立
+                        guard pendingHighSurrogate == nil else {
+                            throw error("error.lone-surrogate", afterAdvance: true)
+                        }
+                        appendScalar(scalar)
                     }
                 default:
-                    throw error("error.invalid-escape")
+                    throw error("error.invalid-escape", afterAdvance: true)
                 }
                 continue
             }
             // 未转义的原始控制字符（U+0000...U+001F）非法
             if scalar.value < 0x20 {
-                throw error("error.control-char")
+                throw error("error.control-char", afterAdvance: true)
             }
-            if let low = lowSurrogate {
-                _ = low
-                // 代理对后跟普通字符 —— 前一个高位代理孤立
-                throw JSONParseError(
-                    message: String(localized: "error.lone-surrogate"),
-                    line: line + 1,
-                    column: column + 1
-                )
+            // 高位代理后紧跟非转义字符 —— 高位孤立
+            guard pendingHighSurrogate == nil else {
+                throw error("error.lone-surrogate", afterAdvance: true)
             }
             appendScalar(scalar)
         }
@@ -367,37 +372,38 @@ private struct Scanner {
 
     fileprivate enum UnicodeEscape {
         case scalar(Unicode.Scalar)
-        case high(Unicode.Scalar) // D800–DBFF
+        /// 代理区码点（D800–DFFF）的原始值。代理码点不是合法
+        /// Unicode.Scalar（其 init 返回 nil），只能按数值承载；
+        /// 高/低位判定与组合由调用方完成。
+        case surrogate(UInt32)
     }
 
     mutating func parseUnicodeEscape() throws -> UnicodeEscape {
         var value: UInt32 = 0
-        for _ in 0..<4 {
+        for _ in 0 ..< 4 {
             guard let digit = advance() else {
                 throw error("error.invalid-unicode-escape")
             }
             guard let nibble = hexValue(digit) else {
-                throw error("error.invalid-unicode-escape")
+                throw error("error.invalid-unicode-escape", afterAdvance: true)
             }
             value = value << 4 | nibble
         }
-        guard let scalar = Unicode.Scalar(value) else {
-            throw error("error.invalid-unicode-escape")
+        // 先按数值拦截代理区：Unicode.Scalar.init 对代理码点返回 nil，
+        // 不拦截会把合法的代理对（如 😀）误报成非法转义。
+        if (0xD800...0xDFFF).contains(value) {
+            return .surrogate(value)
         }
-        if (0xD800...0xDBFF).contains(value) {
-            return .high(scalar)
+        guard let scalar = Unicode.Scalar(value) else {
+            throw error("error.invalid-unicode-escape", afterAdvance: true)
         }
         return .scalar(scalar)
     }
 
-    private func combineSurrogates(high: Unicode.Scalar, low: Unicode.Scalar) -> Unicode.Scalar? {
-        guard isLowSurrogate(low) else { return nil }
-        let combined = 0x10000 + (high.value - 0xD800) << 10 + (low.value - 0xDC00)
-        return Unicode.Scalar(combined)
-    }
-
-    private func isLowSurrogate(_ scalar: Unicode.Scalar) -> Bool {
-        (0xDC00...0xDFFF).contains(scalar.value)
+    /// 组合代理对。调用点已保证 high ∈ D800–DBFF、low ∈ DC00–DFFF，
+    /// 结果必落在 0x10000–0x10FFFF（合法标量），故可强制解包。
+    private func combineSurrogates(high: UInt32, low: UInt32) -> Unicode.Scalar {
+        Unicode.Scalar(0x10000 + (high - 0xD800) << 10 + (low - 0xDC00))!
     }
 
     private func hexValue(_ scalar: Unicode.Scalar) -> UInt32? {
@@ -413,14 +419,18 @@ private struct Scanner {
 
     mutating func parseNumber() throws -> String {
         let start = index
-        if peek == "-" { _ = advance() }
+        if peek == "-" {
+            _ = advance()
+        }
         // 整数部分
         guard let first = peek, first == "0" || ("1"..."9").contains(first) else {
             throw error("error.invalid-number")
         }
         _ = advance()
         if first != "0" {
-            while let s = peek, "0"..."9" ~= s { _ = advance() }
+            while let s = peek, "0"..."9" ~= s {
+                _ = advance()
+            }
         }
         // 小数部分
         if peek == "." {
@@ -428,18 +438,23 @@ private struct Scanner {
             guard let s = peek, "0"..."9" ~= s else {
                 throw error("error.invalid-number")
             }
-            while let s = peek, "0"..."9" ~= s { _ = advance() }
+            while let s = peek, "0"..."9" ~= s {
+                _ = advance()
+            }
         }
         // 指数部分
         if peek == "e" || peek == "E" {
             _ = advance()
-            if peek == "+" || peek == "-" { _ = advance() }
+            if peek == "+" || peek == "-" {
+                _ = advance()
+            }
             guard let s = peek, "0"..."9" ~= s else {
                 throw error("error.invalid-number")
             }
-            while let s = peek, "0"..."9" ~= s { _ = advance() }
+            while let s = peek, "0"..."9" ~= s {
+                _ = advance()
+            }
         }
-        let lexeme = String(String.UnicodeScalarView(scalars[start..<index]))
-        return lexeme
+        return String(String.UnicodeScalarView(scalars[start ..< index]))
     }
 }

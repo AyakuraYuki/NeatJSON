@@ -10,8 +10,6 @@
 "action.diff" = "Compare";
 "action.diff.help" = "Compare input and output";
 "action.close" = "Close";
-"action.reformat" = "Reformat";
-"action.sort-keys" = "Sort Keys";
 
 "picker.indent" = "Indent";
 
@@ -31,9 +29,6 @@
 "diff.degraded" = "Simplified";
 "diff.exact" = "Exact compare";
 "diff.exact.help" = "Recompute without simplification. May take a while; closing this window cancels it.";
-
-
-"toolbar.menu.json" = "JSON";
 
 "settings.tab.general" = "General";
 "settings.tab.shortcuts" = "Shortcuts";

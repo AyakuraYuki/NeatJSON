@@ -48,13 +48,13 @@ public extension JSONValue {
     /// 递归应用于任意嵌套深度（含数组内的对象元素）。
     func sorted() -> JSONValue {
         switch self {
-        case .object(let members):
+        case let .object(members):
             .object(
                 members
                     .map { ($0.0, $0.1.sorted()) }
                     .sorted { $0.0 < $1.0 }
             )
-        case .array(let items):
+        case let .array(items):
             .array(items.map { $0.sorted() })
         case .string, .number, .bool, .null:
             self

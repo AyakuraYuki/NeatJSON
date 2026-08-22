@@ -4,6 +4,8 @@ import SwiftUI
 struct MainEditorView: View {
     @Environment(AppModel.self) private var model
     @State private var splitFraction: CGFloat = 0.5
+    /// 拖拽开始时的 splitFraction 快照；nil 表示不在拖拽中。
+    @State private var dragStartFraction: CGFloat?
 
     var body: some View {
         GeometryReader { proxy in
@@ -24,13 +26,21 @@ struct MainEditorView: View {
                             .gesture(
                                 DragGesture(minimumDistance: 1)
                                     .onChanged { value in
+                                        // 用 translation（相对拖拽起点的位移），不用
+                                        // value.location——后者是相对这条会随 fraction
+                                        // 移动的 10pt 热区的局部坐标，与运行中的
+                                        // fraction 混算会形成反馈，时序不稳定。
+                                        let start = dragStartFraction ?? splitFraction
+                                        dragStartFraction = start
                                         let fraction =
-                                            (value.location.x + proxy.size.width * splitFraction)
-                                                / proxy.size.width
+                                            start + value.translation.width / proxy.size.width
                                         splitFraction = min(
                                             0.8,
                                             max(0.2, fraction)
                                         )
+                                    }
+                                    .onEnded { _ in
+                                        dragStartFraction = nil
                                     }
                             )
                     }

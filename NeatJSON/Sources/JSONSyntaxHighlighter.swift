@@ -147,7 +147,7 @@ enum JSONSyntaxHighlighter {
     ///
     /// 实测 1.4 MB / 16.8 万 token 的文档一次性套完要 ~53 ms（会掉帧）；
     /// 按这个粒度切开后每块 ~6 ms，观感上是渐进上色而不是卡顿。
-    static let applyChunkSize = 20_000
+    static let applyChunkSize = 20000
 
     /// 铺基础样式（等宽字体 + 正文色）。一次 setAttributes，代价与文本长度无关。
     @MainActor
@@ -238,7 +238,7 @@ enum JSONSyntaxHighlighter {
             var i = 0
 
             func isSpace(_ c: UInt16) -> Bool {
-                c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D
+                c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d
             }
             func append(_ kind: TokenKind, from start: Int, to end: Int) {
                 guard end > start else { return }
@@ -260,7 +260,7 @@ enum JSONSyntaxHighlighter {
                     var closed = false
                     while cursor < length {
                         let cc = text[cursor]
-                        if cc == 0x5C { // 反斜杠：跳过被转义的下一个码元
+                        if cc == 0x5c { // 反斜杠：跳过被转义的下一个码元
                             cursor += 2
                             continue
                         }
@@ -271,22 +271,24 @@ enum JSONSyntaxHighlighter {
                         }
                         cursor += 1
                     }
-                    if !closed || cursor > length { cursor = length }
+                    if !closed || cursor > length {
+                        cursor = length
+                    }
                     // 判定 key：闭合引号之后跳过空白，遇 ':' 则是 key
                     var lookahead = cursor
                     while lookahead < length, isSpace(text[lookahead]) {
                         lookahead += 1
                     }
-                    let isKey = lookahead < length && text[lookahead] == 0x3A // ':'
+                    let isKey = lookahead < length && text[lookahead] == 0x3a // ':'
                     append(isKey ? .key : .string, from: i, to: cursor)
                     i = cursor
-                case 0x30 ... 0x39, 0x2B, 0x2D, 0x2E: // 0-9 + - .
+                case 0x30 ... 0x39, 0x2b, 0x2d, 0x2e: // 0-9 + - .
                     // 数字：连续的数字/符号/指数字符
                     var cursor = i
                     while cursor < length {
                         let cc = text[cursor]
-                        if (cc >= 0x30 && cc <= 0x39) || cc == 0x2B || cc == 0x2D
-                            || cc == 0x2E || cc == 0x65 || cc == 0x45
+                        if (cc >= 0x30 && cc <= 0x39) || cc == 0x2b || cc == 0x2d
+                            || cc == 0x2e || cc == 0x65 || cc == 0x45
                         { // e E
                             cursor += 1
                         } else {
@@ -295,10 +297,10 @@ enum JSONSyntaxHighlighter {
                     }
                     append(.number, from: i, to: cursor)
                     i = cursor
-                case 0x74, 0x66, 0x6E: // t f n
+                case 0x74, 0x66, 0x6e: // t f n
                     // 字面量：true / false / null
                     var cursor = i
-                    while cursor < length, text[cursor] >= 0x61, text[cursor] <= 0x7A {
+                    while cursor < length, text[cursor] >= 0x61, text[cursor] <= 0x7a {
                         cursor += 1
                     }
                     if matchesLiteral(text, from: i, to: cursor) {
@@ -322,9 +324,9 @@ enum JSONSyntaxHighlighter {
         switch end - start {
         case 4: // true / null
             equals(text, start, [0x74, 0x72, 0x75, 0x65])
-                || equals(text, start, [0x6E, 0x75, 0x6C, 0x6C])
+                || equals(text, start, [0x6e, 0x75, 0x6c, 0x6c])
         case 5: // false
-            equals(text, start, [0x66, 0x61, 0x6C, 0x73, 0x65])
+            equals(text, start, [0x66, 0x61, 0x6c, 0x73, 0x65])
         default:
             false
         }

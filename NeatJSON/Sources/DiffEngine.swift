@@ -39,7 +39,7 @@ public enum DiffEngine {
             maxMyersArea: Int,
             allowsFallback: Bool,
             maxInlineTokens: Int,
-            maxDepth: Int = 3000
+            maxDepth: Int = 3_000
         ) {
             self.directMyersArea = directMyersArea
             self.maxMyersArea = maxMyersArea
@@ -95,7 +95,9 @@ public enum DiffEngine {
         table.reserveCapacity(old.count + new.count)
         var next: Int32 = 0
         func intern(_ line: String) -> Int32 {
-            if let id = table[line] { return id }
+            if let id = table[line] {
+                return id
+            }
             let id = next
             table[line] = id
             next += 1
@@ -134,7 +136,9 @@ public enum DiffEngine {
         var wordStart = -1
         for c in line {
             if c.isLetter || c.isNumber || c == "_" {
-                if wordStart < 0 { wordStart = offset }
+                if wordStart < 0 {
+                    wordStart = offset
+                }
             } else {
                 if wordStart >= 0 {
                     spans.append(wordStart ..< offset)
@@ -144,7 +148,9 @@ public enum DiffEngine {
             }
             offset += 1
         }
-        if wordStart >= 0 { spans.append(wordStart ..< offset) }
+        if wordStart >= 0 {
+            spans.append(wordStart ..< offset)
+        }
         return spans
     }
 
@@ -170,7 +176,9 @@ public enum DiffEngine {
             guard l.count == r.count else { return false }
             var li = l.lowerBound, ri = r.lowerBound
             while li < l.upperBound {
-                if oldChars[li] != newChars[ri] { return false }
+                if oldChars[li] != newChars[ri] {
+                    return false
+                }
                 li += 1
                 ri += 1
             }
@@ -180,7 +188,9 @@ public enum DiffEngine {
         // 公共前后缀词元裁剪：JSON 行通常只有值不同，裁完往往只剩一两个词元。
         var prefix = 0
         let maxPrefix = min(oldSpans.count, newSpans.count)
-        while prefix < maxPrefix, sameToken(prefix, prefix) { prefix += 1 }
+        while prefix < maxPrefix, sameToken(prefix, prefix) {
+            prefix += 1
+        }
         var suffix = 0
         let maxSuffix = min(oldSpans.count - prefix, newSpans.count - prefix)
         while suffix < maxSuffix,
@@ -191,7 +201,9 @@ public enum DiffEngine {
 
         let oldRange = prefix ..< (oldSpans.count - suffix)
         let newRange = prefix ..< (newSpans.count - suffix)
-        if oldRange.isEmpty, newRange.isEmpty { return InlineRanges() }
+        if oldRange.isEmpty, newRange.isEmpty {
+            return InlineRanges()
+        }
 
         // 超预算：整段粗粒度高亮，避免在单行上跑大规模 diff。
         if oldRange.count > limits.maxInlineTokens || newRange.count > limits.maxInlineTokens {
@@ -218,7 +230,9 @@ public enum DiffEngine {
         var next: Int32 = 0
         func intern(_ chars: [Character], _ span: Range<Int>) -> Int32 {
             let key = String(chars[span])
-            if let id = table[key] { return id }
+            if let id = table[key] {
+                return id
+            }
             let id = next
             table[key] = id
             next += 1
@@ -256,13 +270,17 @@ public enum DiffEngine {
             if index == previous + 1 {
                 runEnd = spans[index].upperBound
             } else {
-                if runStart >= 0 { result.append(runStart ..< runEnd) }
+                if runStart >= 0 {
+                    result.append(runStart ..< runEnd)
+                }
                 runStart = spans[index].lowerBound
                 runEnd = spans[index].upperBound
             }
             previous = index
         }
-        if runStart >= 0 { result.append(runStart ..< runEnd) }
+        if runStart >= 0 {
+            result.append(runStart ..< runEnd)
+        }
         return result
     }
 
@@ -286,7 +304,9 @@ public enum DiffEngine {
 
         public var kind: Kind
 
-        public init(kind: Kind) { self.kind = kind }
+        public init(kind: Kind) {
+            self.kind = kind
+        }
     }
 
     /// diff 结果：行列表 + 预先算好的统计 + 是否降级。
@@ -312,7 +332,9 @@ public enum DiffEngine {
         let (ops, degraded) = lineDiffDetailed(
             old, new, limits: limits, isCancelled: isCancelled
         )
-        if isCancelled() { return .empty }
+        if isCancelled() {
+            return .empty
+        }
         var result = rows(from: ops, collapseContext: collapseContext)
         result.degraded = degraded
         return result
@@ -407,14 +429,18 @@ public enum DiffEngine {
                 continue
             }
             var runEnd = i
-            while runEnd < rows.count, case .equal = rows[runEnd].kind { runEnd += 1 }
+            while runEnd < rows.count, case .equal = rows[runEnd].kind {
+                runEnd += 1
+            }
             let run = i ..< runEnd
             // 文件头/尾的未变更段只需一侧上下文
             let leading = i == 0 ? 0 : context
             let trailing = runEnd == rows.count ? 0 : context
             // 折叠段至少要吃掉 2 行才值得
             if run.count >= leading + trailing + 2 {
-                for k in i ..< (i + leading) { output.append(rows[k]) }
+                for k in i ..< (i + leading) {
+                    output.append(rows[k])
+                }
                 let hiddenStart = i + leading
                 let hiddenEnd = runEnd - trailing
                 if let old = equalRange(rows, hiddenStart ..< hiddenEnd, useOld: true),
@@ -422,9 +448,13 @@ public enum DiffEngine {
                 {
                     output.append(Row(kind: .collapsed(oldRange: old, newRange: new)))
                 }
-                for k in (runEnd - trailing) ..< runEnd { output.append(rows[k]) }
+                for k in (runEnd - trailing) ..< runEnd {
+                    output.append(rows[k])
+                }
             } else {
-                for k in run { output.append(rows[k]) }
+                for k in run {
+                    output.append(rows[k])
+                }
             }
             i = runEnd
         }
@@ -482,16 +512,22 @@ private final class Differ {
         ops.reserveCapacity(a.count + b.count)
         // 全等快速路径（整数数组直接比）
         if a == b {
-            for i in 0 ..< a.count { ops.append(.equal(oldIndex: i, newIndex: i)) }
+            for i in 0 ..< a.count {
+                ops.append(.equal(oldIndex: i, newIndex: i))
+            }
             return
         }
         region(aLo: 0, aHi: a.count, bLo: 0, bHi: b.count, depth: 0)
     }
 
     private func checkCancelled() -> Bool {
-        if cancelled { return true }
+        if cancelled {
+            return true
+        }
         steps += 1
-        if steps & 0x3FF == 0, isCancelled() { cancelled = true }
+        if steps & 0x3FF == 0, isCancelled() {
+            cancelled = true
+        }
         return cancelled
     }
 
@@ -499,7 +535,9 @@ private final class Differ {
 
     /// 先剥公共前后缀，再交给 `core`。
     private func region(aLo: Int, aHi: Int, bLo: Int, bHi: Int, depth: Int) {
-        if checkCancelled() { return }
+        if checkCancelled() {
+            return
+        }
         var aLo = aLo, aHi = aHi, bLo = bLo, bHi = bHi
 
         while aLo < aHi, bLo < bHi, a[aLo] == b[bLo] {
@@ -522,15 +560,21 @@ private final class Differ {
     }
 
     private func core(aLo: Int, aHi: Int, bLo: Int, bHi: Int, depth: Int) {
-        if checkCancelled() { return }
+        if checkCancelled() {
+            return
+        }
         let n = aHi - aLo
         let m = bHi - bLo
         if n == 0 {
-            for j in bLo ..< bHi { ops.append(.insert(newIndex: j)) }
+            for j in bLo ..< bHi {
+                ops.append(.insert(newIndex: j))
+            }
             return
         }
         if m == 0 {
-            for i in aLo ..< aHi { ops.append(.delete(oldIndex: i)) }
+            for i in aLo ..< aHi {
+                ops.append(.delete(oldIndex: i))
+            }
             return
         }
         if depth >= limits.maxDepth {
@@ -549,7 +593,9 @@ private final class Differ {
             var prevB = bLo
             for (ia, ib) in anchors {
                 region(aLo: prevA, aHi: ia, bLo: prevB, bHi: ib, depth: depth + 1)
-                if checkCancelled() { return }
+                if checkCancelled() {
+                    return
+                }
                 ops.append(.equal(oldIndex: ia, newIndex: ib))
                 prevA = ia + 1
                 prevB = ib + 1
@@ -571,8 +617,12 @@ private final class Differ {
     }
 
     private func replaceWholeRegion(aLo: Int, aHi: Int, bLo: Int, bHi: Int) {
-        for i in aLo ..< aHi { ops.append(.delete(oldIndex: i)) }
-        for j in bLo ..< bHi { ops.append(.insert(newIndex: j)) }
+        for i in aLo ..< aHi {
+            ops.append(.delete(oldIndex: i))
+        }
+        for j in bLo ..< bHi {
+            ops.append(.insert(newIndex: j))
+        }
     }
 
     /// `n * m <= area`，用除法比较避免乘法溢出。
@@ -584,7 +634,9 @@ private final class Differ {
 
     private func myers(aLo: Int, aHi: Int, bLo: Int, bHi: Int, depth: Int) {
         let (x, y) = bisect(aLo: aLo, aHi: aHi, bLo: bLo, bHi: bHi)
-        if checkCancelled() { return }
+        if checkCancelled() {
+            return
+        }
         // 分割点必须让两侧都真正变小，否则退化处理（防御性：避免无限递归）
         if (x == aLo && y == bLo) || (x == aHi && y == bHi) {
             replaceWholeRegion(aLo: aLo, aHi: aHi, bLo: bLo, bHi: bHi)
@@ -617,7 +669,9 @@ private final class Differ {
 
         var d = 0
         while d < maxD {
-            if checkCancelled() { return (aHi, bLo) }
+            if checkCancelled() {
+                return (aHi, bLo)
+            }
 
             // 前向
             var k = -d + fStart
@@ -642,7 +696,9 @@ private final class Differ {
                 } else if checkForward {
                     let ro = offset + delta - k
                     if ro >= 0, ro < length, backward[ro] != -1 {
-                        if x >= n - backward[ro] { return (aLo + x, bLo + y) }
+                        if x >= n - backward[ro] {
+                            return (aLo + x, bLo + y)
+                        }
                     }
                 }
                 k += 2
@@ -673,7 +729,9 @@ private final class Differ {
                     if fo >= 0, fo < length, forward[fo] != -1 {
                         let fx = forward[fo]
                         let fy = offset + fx - fo
-                        if fx >= n - x { return (aLo + fx, bLo + fy) }
+                        if fx >= n - x {
+                            return (aLo + fx, bLo + fy)
+                        }
                     }
                 }
                 kr += 2
@@ -690,7 +748,9 @@ private final class Differ {
     private func patienceAnchors(aLo: Int, aHi: Int, bLo: Int, bHi: Int) -> [(Int, Int)] {
         var aCount: [Int32: Int32] = [:]
         aCount.reserveCapacity(aHi - aLo)
-        for i in aLo ..< aHi { aCount[a[i], default: 0] += 1 }
+        for i in aLo ..< aHi {
+            aCount[a[i], default: 0] += 1
+        }
 
         var bInfo: [Int32: (count: Int32, index: Int32)] = [:]
         bInfo.reserveCapacity(bHi - bLo)
@@ -722,10 +782,18 @@ private final class Differ {
             var lo = 0, hi = tails.count
             while lo < hi {
                 let mid = (lo + hi) / 2
-                if pairs[tails[mid]].1 < value { lo = mid + 1 } else { hi = mid }
+                if pairs[tails[mid]].1 < value {
+                    lo = mid + 1
+                } else {
+                    hi = mid
+                }
             }
             previous[i] = lo > 0 ? tails[lo - 1] : -1
-            if lo == tails.count { tails.append(i) } else { tails[lo] = i }
+            if lo == tails.count {
+                tails.append(i)
+            } else {
+                tails[lo] = i
+            }
         }
         var result: [(Int, Int)] = []
         result.reserveCapacity(tails.count)

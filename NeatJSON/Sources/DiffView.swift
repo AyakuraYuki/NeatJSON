@@ -494,7 +494,9 @@ struct DiffDocument: Sendable {
     var deletions: Int
     var degraded: Bool
 
-    var isIdentical: Bool { insertions == 0 && deletions == 0 }
+    var isIdentical: Bool {
+        insertions == 0 && deletions == 0
+    }
 
     /// 规范化 + 切行 + diff，整套都可在后台线程执行。
     static func prepare(
@@ -577,7 +579,9 @@ final class InlineCache {
         newLine: String,
         limits: DiffEngine.Limits
     ) -> DiffEngine.InlineRanges {
-        if let cached = storage[row] { return cached }
+        if let cached = storage[row] {
+            return cached
+        }
         let computed = DiffEngine.inlineDiff(
             oldLine: oldLine,
             newLine: newLine,
@@ -595,7 +599,11 @@ final class InlineCache {
 final class CancellationFlag: Sendable {
     private let flag = Atomic<Bool>(false)
 
-    var isCancelled: Bool { flag.load(ordering: .relaxed) }
+    var isCancelled: Bool {
+        flag.load(ordering: .relaxed)
+    }
 
-    func cancel() { flag.store(true, ordering: .relaxed) }
+    func cancel() {
+        flag.store(true, ordering: .relaxed)
+    }
 }

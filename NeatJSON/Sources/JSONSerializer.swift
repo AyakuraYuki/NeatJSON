@@ -6,7 +6,9 @@ public enum IndentStyle: String, CaseIterable, Sendable, Identifiable {
     case spaces4
     case tab
 
-    public var id: String { rawValue }
+    public var id: String {
+        rawValue
+    }
 
     public var label: String {
         switch self {
@@ -164,7 +166,7 @@ public enum JSONSerializer {
         /// 走 UTF-8 视图：多字节序列的续字节恒 ≥ 0x80，所以 `< 0x20`、
         /// `"`、`\` 这三类判断按字节做是精确的，且不需要解码。
         private static func needsEscaping(_ string: String) -> Bool {
-            for byte in string.utf8 where byte < 0x20 || byte == 0x22 || byte == 0x5C {
+            for byte in string.utf8 where byte < 0x20 || byte == 0x22 || byte == 0x5c {
                 return true
             }
             return false

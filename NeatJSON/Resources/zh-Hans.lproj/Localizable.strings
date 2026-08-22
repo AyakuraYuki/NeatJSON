@@ -10,8 +10,6 @@
 "action.diff" = "对比差异";
 "action.diff.help" = "对比输入与输出";
 "action.close" = "关闭";
-"action.reformat" = "重新格式化";
-"action.sort-keys" = "按 Key 排序";
 
 "picker.indent" = "缩进";
 
@@ -31,9 +29,6 @@
 "diff.degraded" = "已简化对比";
 "diff.exact" = "精确对比";
 "diff.exact.help" = "不做简化重新计算。可能耗时较久，关闭窗口即可取消。";
-
-
-"toolbar.menu.json" = "JSON";
 
 "settings.tab.general" = "通用";
 "settings.tab.shortcuts" = "快捷键";

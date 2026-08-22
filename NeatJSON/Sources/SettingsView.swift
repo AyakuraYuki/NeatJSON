@@ -12,7 +12,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
     case light
     case dark
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var colorScheme: ColorScheme? {
         switch self {
@@ -86,13 +88,6 @@ struct SettingsView: View {
     private var shortcutsTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                shortcutSection(
-                    title: String(localized: "toolbar.menu.json", defaultValue: "JSON"),
-                    rows: [
-                        (String(localized: "action.reformat", defaultValue: "Reformat"), "⌘R"),
-                        (String(localized: "action.sort-keys", defaultValue: "Sort Keys"), "⌘⇧K"),
-                    ]
-                )
                 shortcutSection(
                     title: String(
                         localized: "settings.shortcuts.section.toolbar",

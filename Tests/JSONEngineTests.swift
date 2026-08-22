@@ -95,7 +95,7 @@ final class JSONEngineTests: XCTestCase {
     // MARK: - 转义
 
     func testStringEscapes() throws {
-        // \uXXXX 代理对解析为单个字符（emoji）
+        // 字面 emoji（非转义）原样解析
         let parsed = try JSONParser.parseThrowing(#""😀""#)
         XCTAssertEqual(parsed, .string("😀"))
 
@@ -107,10 +107,44 @@ final class JSONEngineTests: XCTestCase {
         XCTAssertEqual(serialized, "\"a\\nb\\u0001中文😀\"")
     }
 
+    /// \uXXXX 高+低代理对组合为单个非 BMP 字符。
+    ///
+    /// 历史 bug：parseUnicodeEscape 直接用 Unicode.Scalar(value) 构造，
+    /// 而代理区码点（D800–DFFF）不是合法标量（init 返回 nil），导致
+    /// 合法的代理对被误报成 invalid-unicode-escape，组合路径不可达。
+    func testSurrogatePairEscape() throws {
+        // 典型 emoji（必须以转义形式书写，才会走代理对组合路径）
+        XCTAssertEqual(try JSONParser.parseThrowing(#""\ud83d\ude00""#), .string("😀"))
+        // 边界：最小 / 最大代理对
+        XCTAssertEqual(try JSONParser.parseThrowing(#""\ud800\udc00""#), .string("\u{10000}"))
+        XCTAssertEqual(try JSONParser.parseThrowing(#""\udbff\udfff""#), .string("\u{10FFFF}"))
+        // 与普通字符混排
+        XCTAssertEqual(try JSONParser.parseThrowing(#""a\ud83d\ude00b""#), .string("a😀b"))
+        // 连续两个代理对
+        XCTAssertEqual(try JSONParser.parseThrowing(#""\ud83d\ude00\ud83d\ude00""#), .string("😀😀"))
+    }
+
     func testLoneSurrogateRejected() {
-        XCTAssertThrowsError(try JSONParser.parseThrowing("\"\\ud83d\"")) // 孤立高位
-        XCTAssertThrowsError(try JSONParser.parseThrowing("\"\\ude00\"")) // 孤立低位
-        XCTAssertThrowsError(try JSONParser.parseThrowing("\"\\ud83d\\ud83d\"")) // 高+高
+        // 必须抛 lone-surrogate 而不是别的错误（比如 invalid-unicode-escape），
+        // 否则即便抛错也说明走错了路径。
+        let loneMessage = String(localized: "error.lone-surrogate")
+        let cases = [
+            "\"\\ud83d\"", // 孤立高位（后随闭引号）
+            "\"\\ude00\"", // 孤立低位
+            "\"\\ud83d\\ud83d\"", // 高+高
+            "\"\\ud83da\"", // 高位后随普通字符
+            "\"\\ud83d\\n\"", // 高位后随非 \u 转义
+            "\"\\ud83d\\u0041\"", // 高位后随非代理 \u 转义
+        ]
+        for input in cases {
+            XCTAssertThrowsError(try JSONParser.parseThrowing(input), "input: \(input)") { error in
+                XCTAssertEqual(
+                    (error as? JSONParseError)?.message,
+                    loneMessage,
+                    "input: \(input) 应报 lone-surrogate"
+                )
+            }
+        }
     }
 
     func testControlCharacterRejected() {
@@ -126,6 +160,26 @@ final class JSONEngineTests: XCTestCase {
             XCTAssertNotNil(parseError)
             XCTAssertEqual(parseError?.line, 3)
             XCTAssertEqual(parseError?.column, 6)
+        }
+    }
+
+    /// advance 型错误（出错字符刚被消费）：位置应指向出错字符本身——
+    /// 普通字符不偏列；出错字符是 \n 时指向上一行末尾，而不是下一行开头。
+    func testErrorPositionAfterAdvance() {
+        let cases: [(input: String, line: Int, column: Int)] = [
+            ("\"a\u{01}b\"", 1, 3), // 控制字符在第 3 列
+            ("\"a\\qb\"", 1, 4), // 非法转义字符 q 在第 4 列
+            ("trux", 1, 4), // 非法字面量，x 在第 4 列
+            ("\"\\u12g4\"", 1, 6), // 非法十六进制位 g 在第 6 列
+            ("\"a\nb\"", 1, 3), // 裸换行在第 1 行第 3 列
+            ("\"a\\\nb\"", 1, 4), // 非法转义是换行符，在第 1 行第 4 列
+        ]
+        for (input, line, column) in cases {
+            XCTAssertThrowsError(try JSONParser.parseThrowing(input), "input: \(input)") { error in
+                let parseError = error as? JSONParseError
+                XCTAssertEqual(parseError?.line, line, "input: \(input)")
+                XCTAssertEqual(parseError?.column, column, "input: \(input)")
+            }
         }
     }
 
@@ -205,8 +259,8 @@ final class JSONEngineTests: XCTestCase {
     /// 两份表的 key 集合必须一致，否则某个语言会静默回退。
     /// 无需维护清单，新增 key 时自动生效。
     func testLocalizationTablesHaveIdenticalKeys() throws {
-        let en = Set(try Self.stringsTable(localization: "en").keys)
-        let zh = Set(try Self.stringsTable(localization: "zh-Hans").keys)
+        let en = try Set(Self.stringsTable(localization: "en").keys)
+        let zh = try Set(Self.stringsTable(localization: "zh-Hans").keys)
         XCTAssertEqual(en.symmetricDifference(zh), [], "en 与 zh-Hans 的 key 不一致")
     }
 

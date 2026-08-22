@@ -176,13 +176,17 @@ final class AppModel {
         guard !text.isEmpty else { return 0 }
         if let counted = text.utf8.withContiguousStorageIfAvailable({ buffer -> Int in
             var count = 1
-            for byte in buffer where byte == 0x0A { count += 1 }
+            for byte in buffer where byte == 0x0A {
+                count += 1
+            }
             return count
         }) {
             return counted
         }
         var count = 1
-        for byte in text.utf8 where byte == 0x0A { count += 1 }
+        for byte in text.utf8 where byte == 0x0A {
+            count += 1
+        }
         return count
     }
 

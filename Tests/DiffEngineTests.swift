@@ -16,7 +16,9 @@ final class DiffEngineTests: XCTestCase {
     func testPureInsert() {
         let ops = DiffEngine.lineDiff(["a"], ["a", "b", "c"])
         let inserts = ops.filter {
-            if case .insert = $0 { return true }
+            if case .insert = $0 {
+                return true
+            }
             return false
         }
         XCTAssertEqual(inserts.count, 2)
@@ -25,7 +27,9 @@ final class DiffEngineTests: XCTestCase {
     func testPureDelete() {
         let ops = DiffEngine.lineDiff(["a", "b", "c"], ["a"])
         let deletes = ops.filter {
-            if case .delete = $0 { return true }
+            if case .delete = $0 {
+                return true
+            }
             return false
         }
         XCTAssertEqual(deletes.count, 2)
@@ -34,10 +38,22 @@ final class DiffEngineTests: XCTestCase {
     func testModify() {
         let ops = DiffEngine.lineDiff(["x: 1"], ["x: 2"])
         XCTAssertEqual(
-            ops.filter { if case .delete = $0 { return true } else { return false } }.count, 1
+            ops.filter {
+                if case .delete = $0 {
+                    return true
+                } else {
+                    return false
+                }
+            }.count, 1
         )
         XCTAssertEqual(
-            ops.filter { if case .insert = $0 { return true } else { return false } }.count, 1
+            ops.filter {
+                if case .insert = $0 {
+                    return true
+                } else {
+                    return false
+                }
+            }.count, 1
         )
     }
 
@@ -48,7 +64,9 @@ final class DiffEngineTests: XCTestCase {
         let rows = DiffEngine.buildRows(old: old, new: new, ops: ops)
         // 至少存在一个 modified 行（"b":1 与 "a":2 键值交换）
         let modifiedCount = rows.filter {
-            if case .modified = $0.kind { return true }
+            if case .modified = $0.kind {
+                return true
+            }
             return false
         }.count
         XCTAssertGreaterThanOrEqual(modifiedCount, 1)
@@ -93,12 +111,30 @@ final class DiffEngineTests: XCTestCase {
 
     func testLargeShuffled() {
         // 前后缀压缩 + Myers 正确性冒烟：乱序后 diff 行数守恒
-        let old = (0..<200).map { "line \($0)" }
+        let old = (0 ..< 200).map { "line \($0)" }
         let new = old.shuffled()
         let ops = DiffEngine.lineDiff(old, new)
-        let equals = ops.filter { if case .equal = $0 { return true } else { return false } }.count
-        let deletes = ops.filter { if case .delete = $0 { return true } else { return false } }.count
-        let inserts = ops.filter { if case .insert = $0 { return true } else { return false } }.count
+        let equals = ops.filter {
+            if case .equal = $0 {
+                return true
+            } else {
+                return false
+            }
+        }.count
+        let deletes = ops.filter {
+            if case .delete = $0 {
+                return true
+            } else {
+                return false
+            }
+        }.count
+        let inserts = ops.filter {
+            if case .insert = $0 {
+                return true
+            } else {
+                return false
+            }
+        }.count
         // 守恒：old 的每一行恰好出现一次（equal 或 delete），new 同理
         XCTAssertEqual(equals + deletes, old.count)
         XCTAssertEqual(equals + inserts, new.count)
@@ -181,7 +217,9 @@ final class DiffEngineTests: XCTestCase {
         XCTAssertEqual(result.insertions, 1)
         XCTAssertEqual(result.deletions, 1)
         let collapsed = result.rows.filter {
-            if case .collapsed = $0.kind { return true }
+            if case .collapsed = $0.kind {
+                return true
+            }
             return false
         }
         XCTAssertEqual(collapsed.count, 2, "变更点前后各应有一个折叠块")

@@ -17,27 +17,12 @@ struct NeatJSONApp: App {
         .defaultSize(width: 1080, height: 680)
         .commands {
             CommandGroup(replacing: .newItem) {} // 单窗口工具，去掉 New 菜单
-            CommandMenu(String(localized: "toolbar.menu.json", defaultValue: "JSON")) {
-                Button(String(localized: "action.reformat", defaultValue: "Reformat")) {
-                    NotificationCenter.default.post(name: .reformatRequested, object: nil)
-                }
-                .keyboardShortcut("r", modifiers: .command)
-
-                Button(String(localized: "action.sort-keys", defaultValue: "Sort Keys")) {
-                    NotificationCenter.default.post(name: .reformatRequested, object: nil)
-                }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
-                .disabled(true)
-            }
+            // 输入每次变更都会自动重排（AppModel.inputText.didSet），
+            // 输出恒为排序结果，因此不提供手动 Reformat / Sort Keys 菜单。
         }
 
         Settings {
-            SettingsView()
-                .preferredColorScheme(appearanceMode.colorScheme)
+            SettingsView().preferredColorScheme(appearanceMode.colorScheme)
         }
     }
-}
-
-extension Notification.Name {
-    static let reformatRequested = Notification.Name("reformatRequested")
 }
