@@ -47,6 +47,12 @@ struct JSONEditorView: NSViewRepresentable {
         textView.string = text
         textView.font = editorFont
         textView.isRichText = false
+        // 背景由外层玻璃卡片的 material 提供，文本视图自身保持透明，
+        // 正文/token 用固定 sRGB 色（见 JSONTextView / JSONSyntaxHighlighter）。
+        textView.drawsBackground = false
+        // 用 textContainerInset 做卡片内边距（替代旧的 scrollView.contentInsets），
+        // 占位提示的位置也按它对齐。
+        textView.textContainerInset = NSSize(width: 8, height: 10)
         textView.allowsUndo = true
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
@@ -85,9 +91,8 @@ struct JSONEditorView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.wantsLayer = true
-        // 顶部留出内容到滚动视图边缘的呼吸空间
-        scrollView.contentInsets = NSEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
-        textView.applyScrollViewColors(scrollView)
+        // 透明：透出卡片的玻璃材质
+        scrollView.drawsBackground = false
 
         let coordinator = context.coordinator
         coordinator.textView = textView
@@ -379,16 +384,15 @@ struct JSONEditorView: NSViewRepresentable {
     }
 }
 
-/// 自定义 NSTextView：固定深浅色配色，并在外观变化时通知着色控制器。
+/// 自定义 NSTextView：透明背景（玻璃卡片透出材质）+ 按外观固定的插入点颜色，
+/// 并在外观变化时通知着色控制器。
 final class JSONTextView: NSTextView {
     /// 外观变化后需要它来重着色（弱引用，controller 由 SwiftUI 持有）。
     weak var highlightController: JSONEditorView.Coordinator?
 
-    /// 浅色模式固定配色（具体 sRGB 值，不经动态解析）
-    private static let lightBackground = NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 1)
+    /// 浅色模式插入点颜色（具体 sRGB 值，不经动态解析）
     private static let lightText = NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 1)
-    /// 深色模式固定配色
-    private static let darkBackground = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+    /// 深色模式插入点颜色
     private static let darkText = NSColor(srgbRed: 0.92, green: 0.92, blue: 0.95, alpha: 1)
 
     /// 当前是否深色外观。
@@ -402,23 +406,15 @@ final class JSONTextView: NSTextView {
         return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
-    /// 把背景色与插入点颜色解析为当前外观下的具体色。
+    /// 把插入点颜色解析为当前外观下的具体色。
     ///
-    /// 编辑器位于 material/vibrant 上下文中（effectiveAppearance 实际为
-    /// VibrantLight），动态 NSColor 存进 NSTextStorage 后要等绘制时才按
-    /// 当时外观解析，在玻璃材质里有落到错误变体的风险；这里在着色前
-    /// 一次性解析成固定 sRGB 值，保证深浅模式下行为可预期。
-    /// （历史上主面板整片空白的真正根因是 textView 宽度为 0 不绘制，
-    /// 由 makeNSView 里的 autoresizingMask 修复；固定色是防御性措施。）
-    ///
-    /// 注意这里**不**设 `textColor`：那会对整份 storage 做一次
-    /// setAttributes（大文本上白白触发一次全量布局失效），正文色由
-    /// `JSONSyntaxHighlighter` 随 token 着色一起铺。
+    /// 背景不在此设置：文本视图保持透明，由卡片材质提供底色（见
+    /// MainEditorView.editorCard）。正文色由 `JSONSyntaxHighlighter`
+    /// 随 token 着色铺固定 sRGB 值——动态 NSColor 存进 NSTextStorage 后
+    /// 要等绘制时才按当时外观解析，在玻璃材质上下文中有落到错误变体的
+    /// 风险，固定色保证深浅模式下行为可预期。
     func resolveColors() {
-        let dark = isDarkAppearance
-        backgroundColor = dark ? Self.darkBackground : Self.lightBackground
-        drawsBackground = true
-        insertionPointColor = dark ? Self.darkText : Self.lightText
+        insertionPointColor = isDarkAppearance ? Self.darkText : Self.lightText
     }
 
     /// 取出内容，并保证是**原生连续存储**的 Swift String。
@@ -459,20 +455,10 @@ final class JSONTextView: NSTextView {
         return String(decoding: bytes[0 ..< used], as: UTF8.self)
     }
 
-    /// 同步滚动视图底色（clip view 露出的区域与正文底色一致）。
-    func applyScrollViewColors(_ scrollView: NSScrollView) {
-        let dark = isDarkAppearance
-        scrollView.drawsBackground = true
-        scrollView.backgroundColor = dark ? Self.darkBackground : Self.lightBackground
-    }
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        // 挂上 window 后外观才可信：重解析颜色并重着色
+        // 挂上 window 后外观才可信：重解析插入点颜色并重着色
         resolveColors()
-        if let scrollView = enclosingScrollView {
-            applyScrollViewColors(scrollView)
-        }
         highlightController?.appearanceDidChange()
     }
 
@@ -481,9 +467,6 @@ final class JSONTextView: NSTextView {
         // 系统深浅色切换后，固定色属性不会自动重算，
         // 需要重新解析颜色并对全文重着色。
         resolveColors()
-        if let scrollView = enclosingScrollView {
-            applyScrollViewColors(scrollView)
-        }
         highlightController?.appearanceDidChange()
     }
 }

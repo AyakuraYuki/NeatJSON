@@ -9,7 +9,7 @@ struct NeatJSONApp: App {
         WindowGroup {
             MainEditorView()
                 .environment(appModel)
-                .preferredColorScheme(appearanceMode.colorScheme)
+                .background(WindowAppearanceConfigurator(mode: appearanceMode))
         }
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified)
@@ -22,7 +22,8 @@ struct NeatJSONApp: App {
         }
 
         Settings {
-            SettingsView().preferredColorScheme(appearanceMode.colorScheme)
+            SettingsView()
+                .background(WindowAppearanceConfigurator(mode: appearanceMode))
         }
     }
 }

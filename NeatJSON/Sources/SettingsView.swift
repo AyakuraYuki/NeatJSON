@@ -1,12 +1,13 @@
+import AppKit
 import SwiftUI
 
 /// 外观模式：日间 / 夜间 / 跟随系统。
 ///
-/// `rawValue` 直接落地进 `@AppStorage`；`colorScheme` 为 nil 表示跟随系统，
-/// 交给 `.preferredColorScheme(_:)` 处理 —— 该修饰符会级联设置所在
-/// window 的 appearance，`JSONTextView.viewDidChangeEffectiveAppearance`
-/// （见 JSONEditorView.swift）随之被系统自动调用，编辑器配色自会跟着切换，
-/// 不需要在这里额外触碰任何 AppKit 状态。
+/// `rawValue` 直接落地进 `@AppStorage`；`nsAppearance` 为 nil 表示跟随系统。
+/// 外观通过 `WindowAppearanceConfigurator` 以 `NSWindow.appearance` 应用
+/// （不用 Scene 级 `.preferredColorScheme`，原因见该类型的注释）；窗口
+/// 外观变化会级联触发 `JSONTextView.viewDidChangeEffectiveAppearance`
+/// （见 JSONEditorView.swift），编辑器配色随之切换。
 enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
     case system
     case light
@@ -16,11 +17,12 @@ enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
         rawValue
     }
 
-    var colorScheme: ColorScheme? {
+    /// 窗口外观；nil 表示跟随系统。
+    var nsAppearance: NSAppearance? {
         switch self {
         case .system: nil
-        case .light: .light
-        case .dark: .dark
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
         }
     }
 

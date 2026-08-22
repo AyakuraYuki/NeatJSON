@@ -1,57 +1,22 @@
+import AppKit
 import SwiftUI
 
-/// 主界面：双栏编辑器 + 玻璃工具栏 + 底部状态栏。
+/// 主界面：左右两块玻璃卡片编辑器 + 玻璃工具栏 + 底部状态栏。
+///
+/// 卡片等宽、固定 1:1，无分隔条与拖拽。卡片以 regularMaterial 浮在
+/// thinMaterial 窗口底色上；文本视图本体不画背景（见 JSONTextView），
+/// 让材质透出来。
 struct MainEditorView: View {
     @Environment(AppModel.self) private var model
-    @State private var splitFraction: CGFloat = 0.5
-    /// 拖拽开始时的 splitFraction 快照；nil 表示不在拖拽中。
-    @State private var dragStartFraction: CGFloat?
+    @AppStorage("editorFontSize") private var editorFontSize: Double = 13
 
     var body: some View {
-        GeometryReader { proxy in
-            let leftWidth = proxy.size.width * splitFraction
-            HStack(spacing: 0) {
-                editorPane(
-                    role: .input,
-                    titleKey: "pane.input.title",
-                    width: leftWidth
-                )
-                Divider()
-                    .overlay {
-                        // 可拖分隔条
-                        Rectangle()
-                            .fill(.clear)
-                            .frame(width: 10)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 1)
-                                    .onChanged { value in
-                                        // 用 translation（相对拖拽起点的位移），不用
-                                        // value.location——后者是相对这条会随 fraction
-                                        // 移动的 10pt 热区的局部坐标，与运行中的
-                                        // fraction 混算会形成反馈，时序不稳定。
-                                        let start = dragStartFraction ?? splitFraction
-                                        dragStartFraction = start
-                                        let fraction =
-                                            start + value.translation.width / proxy.size.width
-                                        splitFraction = min(
-                                            0.8,
-                                            max(0.2, fraction)
-                                        )
-                                    }
-                                    .onEnded { _ in
-                                        dragStartFraction = nil
-                                    }
-                            )
-                    }
-                    .frame(width: 1)
-                editorPane(
-                    role: .output,
-                    titleKey: "pane.output.title",
-                    width: proxy.size.width - leftWidth
-                )
-            }
+        HStack(spacing: 16) {
+            editorCard(role: .input)
+            editorCard(role: .output)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.thinMaterial)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             StatusBarView()
@@ -114,41 +79,48 @@ struct MainEditorView: View {
         }
     }
 
-    // MARK: - 编辑面板
+    // MARK: - 编辑卡片
 
-    private func editorPane(role: JSONEditorView.Role, titleKey: LocalizedStringKey, width: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            paneHeader(titleKey: titleKey, role: role)
-            editorContent(role: role)
-        }
-        .frame(width: max(240, width))
-        .clipped()
+    private static let cardCornerRadius: CGFloat = 14
+
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Self.cardCornerRadius, style: .continuous)
     }
 
-    private func paneHeader(titleKey: LocalizedStringKey, role: JSONEditorView.Role) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: role == .input ? "square.and.pencil" : "checkmark.seal")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text(titleKey)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            if role == .input {
-                Text("\(model.inputLineCount) · \(model.inputCharacterCount)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .contentTransition(.numericText())
-            } else {
-                Text("\(model.outputLineCount)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .contentTransition(.numericText())
+    private func editorCard(role: JSONEditorView.Role) -> some View {
+        editorContent(role: role)
+            .background(.regularMaterial, in: cardShape)
+            .clipShape(cardShape)
+            .overlay(cardShape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+            .overlay(alignment: .topLeading) {
+                placeholder(for: role)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// 空文本时的占位提示。位置与正文首字符对齐：
+    /// textContainerInset.width(8) + lineFragmentPadding(5) = 13。
+    @ViewBuilder
+    private func placeholder(for role: JSONEditorView.Role) -> some View {
+        let isEmpty = role == .input ? model.inputText.isEmpty : model.outputText.isEmpty
+        if isEmpty {
+            Text(
+                role == .input
+                    ? String(
+                        localized: "pane.input.placeholder",
+                        defaultValue: "Type or paste JSON…"
+                    )
+                    : String(
+                        localized: "pane.output.placeholder",
+                        defaultValue: "Formatted result"
+                    )
+            )
+            .font(.system(size: editorFontSize, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .padding(.leading, 13)
+            .padding(.top, 10)
+            .allowsHitTesting(false)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.bar)
     }
 
     @ViewBuilder
@@ -186,11 +158,14 @@ struct MainEditorView: View {
             selection: Bindable(model).indent
         ) {
             ForEach(IndentStyle.allCases) { style in
-                Text(style.label).tag(style)
+                Text(style.label)
+                    .tag(style)
+                    .glassEffect()
             }
         }
         .pickerStyle(.segmented)
         .frame(width: 130)
+        .glassEffect()
     }
 
     private func copyOutput() {
@@ -199,5 +174,3 @@ struct MainEditorView: View {
         pasteboard.setString(model.outputText, forType: .string)
     }
 }
-
-import AppKit

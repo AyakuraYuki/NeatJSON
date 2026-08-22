@@ -1,7 +1,7 @@
 /* NeatJSON — English */
 
-"pane.input.title" = "Input";
-"pane.output.title" = "Output";
+"pane.input.placeholder" = "Type or paste JSON…";
+"pane.output.placeholder" = "Formatted result";
 
 "action.clear" = "Clear";
 "action.clear.help" = "Clear input";
@@ -15,7 +15,8 @@
 
 "status.waiting" = "Waiting for input";
 "status.formatted" = "Formatted & sorted";
-"status.stats" = "%lld in · %lld out";
+"status.input.stats" = "%lld chars · %lld lines";
+"status.output.stats" = "%lld lines";
 
 "diff.title" = "Differences";
 "diff.left.title" = "Input (normalized)";
