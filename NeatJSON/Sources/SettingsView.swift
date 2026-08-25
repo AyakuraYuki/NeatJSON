@@ -90,10 +90,7 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 shortcutSection(
-                    title: String(
-                        localized: "settings.shortcuts.section.toolbar",
-                        defaultValue: "Toolbar"
-                    ),
+                    title: String(localized: "settings.shortcuts.section.toolbar", defaultValue: "Toolbar"),
                     rows: [
                         (String(localized: "action.clear", defaultValue: "Clear"), "⌘K"),
                         (String(localized: "action.copy", defaultValue: "Copy"), "⌘⇧C"),
@@ -101,32 +98,17 @@ struct SettingsView: View {
                     ]
                 )
                 shortcutSection(
-                    title: String(
-                        localized: "settings.shortcuts.section.editing",
-                        defaultValue: "Standard Editing"
-                    ),
+                    title: String(localized: "settings.shortcuts.section.editing", defaultValue: "Standard Editing"),
                     rows: [
                         (String(localized: "shortcut.edit.find", defaultValue: "Find"), "⌘F"),
-                        (
-                            String(localized: "shortcut.edit.find-next", defaultValue: "Find Next"),
-                            "⌘G"
-                        ),
-                        (
-                            String(
-                                localized: "shortcut.edit.find-previous",
-                                defaultValue: "Find Previous"
-                            ),
-                            "⌘⇧G"
-                        ),
+                        (String(localized: "shortcut.edit.find-next", defaultValue: "Find Next"), "⌘G"),
+                        (String(localized: "shortcut.edit.find-previous", defaultValue: "Find Previous"), "⌘⇧G"),
                         (String(localized: "shortcut.edit.undo", defaultValue: "Undo"), "⌘Z"),
                         (String(localized: "shortcut.edit.redo", defaultValue: "Redo"), "⌘⇧Z"),
                         (String(localized: "shortcut.edit.cut", defaultValue: "Cut"), "⌘X"),
                         (String(localized: "shortcut.edit.copy", defaultValue: "Copy"), "⌘C"),
                         (String(localized: "shortcut.edit.paste", defaultValue: "Paste"), "⌘V"),
-                        (
-                            String(localized: "shortcut.edit.select-all", defaultValue: "Select All"),
-                            "⌘A"
-                        ),
+                        (String(localized: "shortcut.edit.select-all", defaultValue: "Select All"), "⌘A"),
                     ]
                 )
             }
