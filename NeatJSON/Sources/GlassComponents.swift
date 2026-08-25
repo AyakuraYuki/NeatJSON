@@ -66,45 +66,44 @@ struct StatusBarView: View {
         .background(.bar)
     }
 
-    @ViewBuilder
+    /// 三种状态只差底色、图标、图标颜色、文字四个点，先在 switch 里
+    /// 取齐这四项，徽章结构与玻璃特效样板只写一遍。
     private var statusBadge: some View {
-        switch badgeState {
+        let state = badgeState
+        let tint: Color?
+        let icon: String
+        let iconStyle: AnyShapeStyle
+        let text: String
+        let textStyle: AnyShapeStyle
+        switch state {
         case .error(let message):
-            GlassBadge(tint: .red) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white)
-                Text(message)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .glassEffectID(BadgeState.error(message), in: badgeNamespace)
-            .glassEffectTransition(.matchedGeometry)
+            (tint, icon) = (.red, "exclamationmark.triangle.fill")
+            iconStyle = AnyShapeStyle(.white)
+            text = message
+            textStyle = AnyShapeStyle(.primary)
         case .waiting:
-            GlassBadge {
-                Image(systemName: "circle.dotted")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Text(String(localized: "status.waiting", defaultValue: "Waiting for input"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .glassEffectID(BadgeState.waiting, in: badgeNamespace)
-            .glassEffectTransition(.matchedGeometry)
+            (tint, icon) = (nil, "circle.dotted")
+            iconStyle = AnyShapeStyle(.secondary)
+            text = String(localized: "status.waiting", defaultValue: "Waiting for input")
+            textStyle = AnyShapeStyle(.secondary)
         case .success:
-            GlassBadge(tint: .green) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white)
-                Text(String(localized: "status.formatted", defaultValue: "Formatted & sorted"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.primary)
-            }
-            .glassEffectID(BadgeState.success, in: badgeNamespace)
-            .glassEffectTransition(.matchedGeometry)
+            (tint, icon) = (.green, "checkmark.circle.fill")
+            iconStyle = AnyShapeStyle(.white)
+            text = String(localized: "status.formatted", defaultValue: "Formatted & sorted")
+            textStyle = AnyShapeStyle(.primary)
         }
+        return GlassBadge(tint: tint) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(iconStyle)
+            Text(text)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(textStyle)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .glassEffectID(state, in: badgeNamespace)
+        .glassEffectTransition(.matchedGeometry)
     }
 
     private var inputStats: some View {

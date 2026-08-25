@@ -1,52 +1,9 @@
-import AppKit
 import SwiftUI
-
-/// 外观模式：日间 / 夜间 / 跟随系统。
-///
-/// `rawValue` 直接落地进 `@AppStorage`；`nsAppearance` 为 nil 表示跟随系统。
-/// 外观通过 `AppearanceController.apply` 以 `NSApplication.appearance` 应用
-/// （不用 Scene 级 `.preferredColorScheme`，原因见该类型的注释）；外观
-/// 变化会级联触发 `JSONTextView.viewDidChangeEffectiveAppearance`
-/// （见 JSONEditorView.swift），编辑器配色随之切换。
-enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
-    case system
-    case light
-    case dark
-
-    var id: String {
-        rawValue
-    }
-
-    /// 窗口外观；nil 表示跟随系统。
-    var nsAppearance: NSAppearance? {
-        switch self {
-        case .system: nil
-        case .light: NSAppearance(named: .aqua)
-        case .dark: NSAppearance(named: .darkAqua)
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .system: String(localized: "settings.appearance.system", defaultValue: "System")
-        case .light: String(localized: "settings.appearance.light", defaultValue: "Light")
-        case .dark: String(localized: "settings.appearance.dark", defaultValue: "Dark")
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .system: "circle.lefthalf.filled"
-        case .light: "sun.max.fill"
-        case .dark: "moon.fill"
-        }
-    }
-}
 
 /// 设置面板：外观切换 + 快捷键一览。由 `Settings { }` Scene 承载，
 /// 系统自动提供菜单入口与 `⌘,` 快捷键。
 struct SettingsView: View {
-    @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
+    @AppStorage(PreferenceKey.appearanceMode) private var appearanceMode: AppearanceMode = .system
 
     var body: some View {
         TabView {

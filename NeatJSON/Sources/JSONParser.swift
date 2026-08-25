@@ -109,13 +109,9 @@ private struct Scanner {
     ///   （此时 `column == 0`，上一行行号为已自增的 `line`，列取 `previousLineColumn`）。
     func error(
         _ messageKey: String,
-        afterAdvance: Bool = false,
-        hasPosition: Bool = true
+        afterAdvance: Bool = false
     ) -> JSONParseError {
         let message = String(localized: String.LocalizationValue(messageKey))
-        guard hasPosition else {
-            return JSONParseError(message: message)
-        }
         if afterAdvance {
             if column == 0 {
                 // 刚消费的是 \n：出错位置在上一行末尾

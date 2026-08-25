@@ -1,5 +1,47 @@
 import AppKit
 
+/// 外观模式：日间 / 夜间 / 跟随系统。
+///
+/// `rawValue` 直接落地进 `@AppStorage`；`nsAppearance` 为 nil 表示跟随系统。
+/// 外观通过 `AppearanceController.apply` 以 `NSApplication.appearance` 应用
+/// （不用 Scene 级 `.preferredColorScheme`，原因见该类型的注释）；外观
+/// 变化会级联触发 `JSONTextView.viewDidChangeEffectiveAppearance`
+/// （见 JSONEditorView.swift），编辑器配色随之切换。
+enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
+    case system
+    case light
+    case dark
+
+    var id: String {
+        rawValue
+    }
+
+    /// 窗口外观；nil 表示跟随系统。
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .system: String(localized: "settings.appearance.system", defaultValue: "System")
+        case .light: String(localized: "settings.appearance.light", defaultValue: "Light")
+        case .dark: String(localized: "settings.appearance.dark", defaultValue: "Dark")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max.fill"
+        case .dark: "moon.fill"
+        }
+    }
+}
+
 /// 把外观切换应用到整个 App，并主动顶掉 macOS 26 上 Liquid Glass
 /// 合成层不会跟着外观翻转自动重绘的已知缺陷。
 ///
@@ -33,5 +75,20 @@ enum AppearanceController {
             contentView.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
         }
+    }
+}
+
+extension NSView {
+    /// 当前是否深色外观。
+    ///
+    /// makeNSView 阶段视图尚未挂到 window，`effectiveAppearance` 可能给出
+    /// 与最终显示环境相反的结果（实测误选 dark 配色后，淡色 token 全部
+    /// 铺在浅色背景上）。因此优先取 window 的外观，其次回退到应用外观，
+    /// 两者都没有时才用视图自身的值。
+    var isDarkAppearance: Bool {
+        let appearance = window?.effectiveAppearance
+            ?? NSApp?.effectiveAppearance
+            ?? effectiveAppearance
+        return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 }

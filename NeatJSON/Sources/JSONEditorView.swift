@@ -27,7 +27,7 @@ struct JSONEditorView: NSViewRepresentable {
     @Binding var text: String
     var onTextChange: ((String) -> Void)? = nil
 
-    @AppStorage("editorFontSize") private var storedFontSize: Double = 13
+    @AppStorage(PreferenceKey.editorFontSize) private var storedFontSize: Double = 13
 
     var editorFont: NSFont {
         NSFont.monospacedSystemFont(ofSize: storedFontSize, weight: .regular)
@@ -69,14 +69,9 @@ struct JSONEditorView: NSViewRepresentable {
         // 图层化：滚动走合成路径，不必每帧重绘整个可见区。
         textView.wantsLayer = true
 
-        switch role {
-        case .input:
-            textView.isEditable = true
-            textView.isSelectable = true
-        case .output:
-            textView.isEditable = false
-            textView.isSelectable = true
-        }
+        // 输入区可编辑，输出区只读；两个区都可选中复制。
+        textView.isEditable = role == .input
+        textView.isSelectable = true
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -386,22 +381,6 @@ final class JSONTextView: NSTextView {
     /// 外观变化后需要它来重着色（弱引用，controller 由 SwiftUI 持有）。
     weak var highlightController: JSONEditorView.Coordinator?
 
-    /// 浅色模式插入点颜色（具体 sRGB 值，不经动态解析）
-    private static let lightText = NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 1)
-    /// 深色模式插入点颜色
-    private static let darkText = NSColor(srgbRed: 0.92, green: 0.92, blue: 0.95, alpha: 1)
-
-    /// 当前是否深色外观。
-    ///
-    /// makeNSView 阶段视图尚未挂到 window，`effectiveAppearance` 可能给出
-    /// 与最终环境相反的结果，因此优先取 window / 应用外观。
-    private var isDarkAppearance: Bool {
-        let appearance = window?.effectiveAppearance
-            ?? NSApp?.effectiveAppearance
-            ?? effectiveAppearance
-        return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    }
-
     /// 把插入点颜色解析为当前外观下的具体色。
     ///
     /// 背景不在此设置：文本视图保持透明，由卡片材质提供底色（见
@@ -410,7 +389,7 @@ final class JSONTextView: NSTextView {
     /// 要等绘制时才按当时外观解析，在玻璃材质上下文中有落到错误变体的
     /// 风险，固定色保证深浅模式下行为可预期。
     func resolveColors() {
-        insertionPointColor = isDarkAppearance ? Self.darkText : Self.lightText
+        insertionPointColor = isDarkAppearance ? colorDarkText : colorLightText
     }
 
     /// 取出内容，并保证是**原生连续存储**的 Swift String。

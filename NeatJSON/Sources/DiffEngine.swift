@@ -74,6 +74,8 @@ public enum DiffEngine {
     }
 
     /// 对旧行 `old` 与新行 `new` 计算 diff 操作序列。
+    ///
+    /// 仅测试使用：渲染路径走 `diff(old:new:...)` 一步到位。
     public static func lineDiff(
         _ old: [String],
         _ new: [String],
@@ -81,6 +83,27 @@ public enum DiffEngine {
         isCancelled: () -> Bool = { false }
     ) -> [Op] {
         lineDiffDetailed(old, new, limits: limits, isCancelled: isCancelled).ops
+    }
+
+    /// 字符串 → 整数编号表：相同文本拿到相同编号，热循环里只比整数。
+    /// 行级与词级 diff 共用。
+    private struct Interner {
+        private var table: [String: Int32] = [:]
+        private var next: Int32 = 0
+
+        init(capacity: Int) {
+            table.reserveCapacity(capacity)
+        }
+
+        mutating func id(_ key: String) -> Int32 {
+            if let id = table[key] {
+                return id
+            }
+            let id = next
+            table[key] = id
+            next += 1
+            return id
+        }
     }
 
     /// 同 `lineDiff`，额外返回是否发生过降级。
@@ -91,20 +114,9 @@ public enum DiffEngine {
         isCancelled: () -> Bool = { false }
     ) -> (ops: [Op], degraded: Bool) {
         // 行 intern：同一行文本映射到同一个 Int32，后续全是整数比较。
-        var table: [String: Int32] = [:]
-        table.reserveCapacity(old.count + new.count)
-        var next: Int32 = 0
-        func intern(_ line: String) -> Int32 {
-            if let id = table[line] {
-                return id
-            }
-            let id = next
-            table[line] = id
-            next += 1
-            return id
-        }
-        let a = old.map(intern)
-        let b = new.map(intern)
+        var interner = Interner(capacity: old.count + new.count)
+        let a = old.map { interner.id($0) }
+        let b = new.map { interner.id($0) }
         // Differ 只活在本函数作用域内，因此可以安全地把非逃逸闭包借给它。
         return withoutActuallyEscaping(isCancelled) { cancel in
             let differ = Differ(a: a, b: b, limits: limits, isCancelled: cancel)
@@ -225,21 +237,9 @@ public enum DiffEngine {
         }
 
         // 词元 intern → 复用同一套线性空间 diff。
-        var table: [String: Int32] = [:]
-        table.reserveCapacity(oldRange.count + newRange.count)
-        var next: Int32 = 0
-        func intern(_ chars: [Character], _ span: Range<Int>) -> Int32 {
-            let key = String(chars[span])
-            if let id = table[key] {
-                return id
-            }
-            let id = next
-            table[key] = id
-            next += 1
-            return id
-        }
-        let a = oldRange.map { intern(oldChars, oldSpans[$0]) }
-        let b = newRange.map { intern(newChars, newSpans[$0]) }
+        var interner = Interner(capacity: oldRange.count + newRange.count)
+        let a = oldRange.map { interner.id(String(oldChars[oldSpans[$0]])) }
+        let b = newRange.map { interner.id(String(newChars[newSpans[$0]])) }
 
         let differ = Differ(a: a, b: b, limits: .exact, isCancelled: { false })
         differ.run()
@@ -404,16 +404,6 @@ public enum DiffEngine {
             deletions: deletions,
             degraded: false
         )
-    }
-
-    /// 兼容入口（保留旧签名）。`old`/`new` 已不再需要——行内 diff 改为惰性计算。
-    public static func buildRows(
-        old _: [String],
-        new _: [String],
-        ops: [Op],
-        collapseContext: Int? = nil
-    ) -> [Row] {
-        rows(from: ops, collapseContext: collapseContext).rows
     }
 
     /// 把过长的未变更段折叠成一行占位。典型 diff 里未变更行占绝大多数，

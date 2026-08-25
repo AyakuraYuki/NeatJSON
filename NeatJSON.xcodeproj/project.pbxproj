@@ -22,6 +22,7 @@
 		81E21935EF106844102DEA31 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED7607B6609F363111CD01EE /* SettingsView.swift */; };
 		8730A80CAD3F348F4E2C20F4 /* MainEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04B82BD0C4EF787364996A9 /* MainEditorView.swift */; };
 		99155C1F63A7A8288A38F621 /* NeatJSONApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DD3DAA0D4C5886D8200276 /* NeatJSONApp.swift */; };
+		D0228C1F303DB3BB001D73AD /* SharedDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0228C1E303DB3A1001D73AD /* SharedDesign.swift */; };
 		E8B9EF124A6FFD851820B0E9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4191D55F1F0A9C2CD0D10C59 /* main.swift */; };
 		F2D95188A898842FD4A46A14 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FC28F195E5DFA011F794419 /* JSONValue.swift */; };
 		F7AFDD04DF2721F3B78D44E5 /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063578CC279909C40D6D5873 /* DiffView.swift */; };
@@ -57,6 +58,7 @@
 		A624717FE374308E0D73D598 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		A834188E488D0073A02C2563 /* JSONSerializer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONSerializer.swift; sourceTree = "<group>"; };
 		C04B82BD0C4EF787364996A9 /* MainEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainEditorView.swift; sourceTree = "<group>"; };
+		D0228C1E303DB3A1001D73AD /* SharedDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDesign.swift; sourceTree = "<group>"; };
 		ED4D4B7444995DB1A3B3931D /* DiffEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffEngine.swift; sourceTree = "<group>"; };
 		ED7607B6609F363111CD01EE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		FF625761AE339B63184739B7 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
@@ -112,6 +114,7 @@
 		E47485149327330EF7FA0A2E /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				D0228C1E303DB3A1001D73AD /* SharedDesign.swift */,
 				35A87D114E3283022229FB7D /* AppearanceController.swift */,
 				08E72A4E61E00C039143828B /* AppModel.swift */,
 				ED4D4B7444995DB1A3B3931D /* DiffEngine.swift */,
@@ -261,6 +264,7 @@
 				199C9E4B86A4D0AC8B78E156 /* JSONSerializer.swift in Sources */,
 				5D7D36A003123C32CF883899 /* JSONSyntaxHighlighter.swift in Sources */,
 				F2D95188A898842FD4A46A14 /* JSONValue.swift in Sources */,
+				D0228C1F303DB3BB001D73AD /* SharedDesign.swift in Sources */,
 				8730A80CAD3F348F4E2C20F4 /* MainEditorView.swift in Sources */,
 				99155C1F63A7A8288A38F621 /* NeatJSONApp.swift in Sources */,
 				81E21935EF106844102DEA31 /* SettingsView.swift in Sources */,

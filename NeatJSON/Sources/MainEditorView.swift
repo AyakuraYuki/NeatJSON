@@ -8,7 +8,7 @@ import SwiftUI
 /// 让材质透出来。
 struct MainEditorView: View {
     @Environment(AppModel.self) private var model
-    @AppStorage("editorFontSize") private var editorFontSize: Double = 13
+    @AppStorage(PreferenceKey.editorFontSize) private var editorFontSize: Double = 13
 
     var body: some View {
         HStack(spacing: 16) {

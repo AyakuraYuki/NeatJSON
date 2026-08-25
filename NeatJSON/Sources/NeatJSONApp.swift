@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct NeatJSONApp: App {
     @State private var appModel = AppModel()
-    @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
+    @AppStorage(PreferenceKey.appearanceMode) private var appearanceMode: AppearanceMode = .system
 
     var body: some Scene {
         WindowGroup {

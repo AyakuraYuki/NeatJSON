@@ -61,7 +61,7 @@ final class DiffEngineTests: XCTestCase {
         let old = ["{", "  \"b\": 1,", "  \"a\": 2", "}"]
         let new = ["{", "  \"a\": 2,", "  \"b\": 1", "}"]
         let ops = DiffEngine.lineDiff(old, new)
-        let rows = DiffEngine.buildRows(old: old, new: new, ops: ops)
+        let rows = DiffEngine.rows(from: ops).rows
         // 至少存在一个 modified 行（"b":1 与 "a":2 键值交换）
         let modifiedCount = rows.filter {
             if case .modified = $0.kind {
@@ -235,10 +235,10 @@ final class DiffEngineTests: XCTestCase {
         XCTAssertEqual(covered, old.count)
     }
 
-    /// 不传 collapseContext 时不折叠（旧签名的调用方行为不变）。
+    /// 不传 collapseContext 时不折叠。
     func testNoCollapseByDefault() {
         let old = (0 ..< 50).map { "line \($0)" }
-        let rows = DiffEngine.buildRows(old: old, new: old, ops: DiffEngine.lineDiff(old, old))
+        let rows = DiffEngine.rows(from: DiffEngine.lineDiff(old, old)).rows
         XCTAssertEqual(rows.count, 50)
     }
 

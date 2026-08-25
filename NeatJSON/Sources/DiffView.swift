@@ -351,12 +351,12 @@ func flatten(document: DiffDocument, expanded: Set<Int>) -> [FlatRow] {
 /// 一侧（old 或 new）一行的全部渲染数据。纯值类型，可跨隔离域传递。
 struct DiffRenderRow: Equatable, Sendable {
     var text: String
-    var lineNumber: Int?
+    var lineNumber: Int? = nil
     var tone: DiffTone
     /// 行内 word 高亮（Character 偏移区间）。
-    var highlights: [Range<Int>]
+    var highlights: [Range<Int>] = []
     /// 非 nil = 这一行是折叠提示条。
-    var collapse: DiffCollapseMarker?
+    var collapse: DiffCollapseMarker? = nil
 }
 
 struct DiffCollapseMarker: Equatable, Sendable {
@@ -420,34 +420,26 @@ func renderRows(
             result.append(
                 DiffRenderRow(
                     text: (isExpanded ? "▾  " : "▸  ") + label,
-                    lineNumber: nil,
                     tone: .unchanged,
-                    highlights: [],
                     collapse: DiffCollapseMarker(index: index, isExpanded: isExpanded)
                 )
             )
         case .collapsedPair(_, let oldIndex, let newIndex):
-            let lineIndex = isOld ? oldIndex : newIndex
             result.append(
                 DiffRenderRow(
                     text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
-                    lineNumber: lineIndex + 1,
-                    tone: .unchanged,
-                    highlights: [],
-                    collapse: nil
+                    lineNumber: (isOld ? oldIndex : newIndex) + 1,
+                    tone: .unchanged
                 )
             )
         case .row(let index):
             switch document.rows[index].kind {
             case .equal(let oldIndex, let newIndex):
-                let lineIndex = isOld ? oldIndex : newIndex
                 result.append(
                     DiffRenderRow(
                         text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
-                        lineNumber: lineIndex + 1,
-                        tone: .unchanged,
-                        highlights: [],
-                        collapse: nil
+                        lineNumber: (isOld ? oldIndex : newIndex) + 1,
+                        tone: .unchanged
                     )
                 )
             case .delete(let oldIndex):
@@ -456,34 +448,22 @@ func renderRows(
                         DiffRenderRow(
                             text: document.oldLines[oldIndex],
                             lineNumber: oldIndex + 1,
-                            tone: .removed,
-                            highlights: [],
-                            collapse: nil
+                            tone: .removed
                         )
                     )
                 } else {
                     // 右侧没有对应行 —— 用占位表示。
-                    result.append(
-                        DiffRenderRow(
-                            text: "", lineNumber: nil, tone: .absent, highlights: [], collapse: nil
-                        )
-                    )
+                    result.append(DiffRenderRow(text: "", tone: .absent))
                 }
             case .insert(let newIndex):
                 if isOld {
-                    result.append(
-                        DiffRenderRow(
-                            text: "", lineNumber: nil, tone: .absent, highlights: [], collapse: nil
-                        )
-                    )
+                    result.append(DiffRenderRow(text: "", tone: .absent))
                 } else {
                     result.append(
                         DiffRenderRow(
                             text: document.newLines[newIndex],
                             lineNumber: newIndex + 1,
-                            tone: .added,
-                            highlights: [],
-                            collapse: nil
+                            tone: .added
                         )
                     )
                 }
@@ -494,8 +474,7 @@ func renderRows(
                         text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
                         lineNumber: (isOld ? oldIndex : newIndex) + 1,
                         tone: isOld ? .removed : .added,
-                        highlights: isOld ? inline.oldRanges : inline.newRanges,
-                        collapse: nil
+                        highlights: isOld ? inline.oldRanges : inline.newRanges
                     )
                 )
             case .collapsed:
@@ -541,9 +520,7 @@ struct DiffPanePalette {
             ? NSColor(srgbRed: 1.000, green: 0.271, blue: 0.227, alpha: 1)
             : NSColor(srgbRed: 1.000, green: 0.231, blue: 0.188, alpha: 1)
         // 正文色与编辑器一致（JSONTextView.lightText / darkText）。
-        let text = dark
-            ? NSColor(srgbRed: 0.92, green: 0.92, blue: 0.95, alpha: 1)
-            : NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 1)
+        let text = dark ? colorDarkText : colorLightText
         return DiffPanePalette(
             text: text,
             lineNumber: text.withAlphaComponent(0.38),
@@ -658,15 +635,6 @@ final class DiffPaneContainerView: NSView {
         let palette = DiffPanePalette.resolve(dark: isDarkAppearance)
         leftColumn.apply(rows: oldRows, palette: palette)
         rightColumn.apply(rows: newRows, palette: palette)
-    }
-
-    /// makeNSView 阶段视图尚未挂到 window，`effectiveAppearance` 可能给出
-    /// 与最终环境相反的结果，因此优先取 window / 应用外观（与编辑器同款）。
-    private var isDarkAppearance: Bool {
-        let appearance = window?.effectiveAppearance
-            ?? NSApp?.effectiveAppearance
-            ?? effectiveAppearance
-        return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
     override func viewDidMoveToWindow() {

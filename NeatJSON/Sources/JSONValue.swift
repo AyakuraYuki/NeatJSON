@@ -44,6 +44,9 @@ extension JSONValue: CustomStringConvertible {
 public extension JSONValue {
     /// 按 key 字典序（Unicode 标量逐码点）升序排列所有对象，
     /// 递归应用于任意嵌套深度（含数组内的对象元素）。
+    ///
+    /// 仅测试使用：主管线在 `JSONSerializer` 写出每个对象时就地排序，
+    /// 不再整树重建；本方法作为排序语义的参照实现保留。
     func sorted() -> JSONValue {
         switch self {
         case let .object(members):

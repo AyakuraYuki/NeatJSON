@@ -27,7 +27,7 @@ enum JSONSyntaxHighlighter {
         /// appearance 解析，而编辑器处于 vibrant/玻璃材质上下文中，
         /// 固定色可避免解析到意外变体的风险，行为更可预期。
         static let light = Palette(
-            base: NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 1),
+            base: colorLightText,
             key: NSColor(srgbRed: 0.10, green: 0.36, blue: 0.78, alpha: 1),
             string: NSColor(srgbRed: 0.78, green: 0.17, blue: 0.24, alpha: 1),
             number: NSColor(srgbRed: 0.07, green: 0.42, blue: 0.32, alpha: 1),
@@ -36,27 +36,16 @@ enum JSONSyntaxHighlighter {
 
         /// 深色模式配色：提亮的同族色，对深底可读。
         static let dark = Palette(
-            base: NSColor(srgbRed: 0.92, green: 0.92, blue: 0.95, alpha: 1),
+            base: colorDarkText,
             key: NSColor(srgbRed: 0.42, green: 0.70, blue: 0.98, alpha: 1),
             string: NSColor(srgbRed: 0.98, green: 0.55, blue: 0.58, alpha: 1),
             number: NSColor(srgbRed: 0.40, green: 0.82, blue: 0.64, alpha: 1),
             literal: NSColor(srgbRed: 0.78, green: 0.58, blue: 0.98, alpha: 1)
         )
 
-        /// 依据当前视图外观选择配色；无法判定时回退浅色。
-        ///
-        /// makeNSView 阶段视图尚未挂到 window，`view.effectiveAppearance`
-        /// 可能给出与最终显示环境相反的结果（误选 dark 配色后，淡色 token
-        /// 全部铺在浅色背景上）。优先采用 window 的外观，其次回退到应用
-        /// 外观，两者都没有时才用视图自身的值。
+        /// 依据当前视图外观选择配色（外观判定的回退链见 `NSView.isDarkAppearance`）。
         @MainActor static func current(for textView: NSTextView) -> Palette {
-            let appearance = textView.window?.effectiveAppearance
-                ?? NSApp?.effectiveAppearance
-                ?? textView.effectiveAppearance
-            let isDark = appearance.bestMatch(
-                from: [.aqua, .darkAqua]
-            ) == .darkAqua
-            return isDark ? .dark : .light
+            textView.isDarkAppearance ? .dark : .light
         }
 
         func color(for kind: TokenKind) -> NSColor {

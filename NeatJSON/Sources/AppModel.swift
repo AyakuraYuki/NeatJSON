@@ -15,7 +15,7 @@ import Observation
 final class AppModel {
     /// 左侧输入区内容（由编辑器回调写入）。
     var inputText: String = "" {
-        didSet { scheduleReformat() }
+        didSet { reformat() }
     }
 
     /// 上一次成功格式化的结果（右侧展示）。失败时保持不变。
@@ -55,21 +55,17 @@ final class AppModel {
         reformat()
     }
 
-    /// 格式化管线：成功才更新 `outputText`，失败只记录错误。
-    ///
-    /// 小文档同步执行（保持键入即时反馈）；大文档防抖 250ms 并放到
-    /// 后台线程解析/序列化，避免每次键入都在主线程跑全量管线。
-    func reformat() {
-        scheduleReformat()
-    }
-
     /// 大文档阈值：超过该字节数走防抖 + 后台计算。
     private static let asyncThreshold = 64 * 1024
 
     /// 输入快照对应的待执行格式化任务（新输入到来即取消）。
     private var reformatTask: Task<Void, Never>?
 
-    private func scheduleReformat() {
+    /// 格式化管线：成功才更新 `outputText`，失败只记录错误。
+    ///
+    /// 小文档同步执行（保持键入即时反馈）；大文档防抖 250ms 并放到
+    /// 后台线程解析/序列化，避免每次键入都在主线程跑全量管线。
+    func reformat() {
         let text = inputText
         let indent = indent
 
