@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// JSON 语法高亮。
 ///

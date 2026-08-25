@@ -41,7 +41,7 @@ public enum JSONParser {
 
     // MARK: - 入口
 
-    public static func parseThrowing(_ text: String) throws -> JSONValue {
+    public static func parse(_ text: String) throws -> JSONValue {
         // 直接建标量数组。旧实现写作 `Scanner(text: String(text.unicodeScalars))`，
         // 那样会先把整份文本复制成一个新 String、再复制成数组。
         var scanner = Scanner(scalars: ContiguousArray(text.unicodeScalars))
@@ -51,20 +51,6 @@ public enum JSONParser {
             throw scanner.error("error.trailing-characters")
         }
         return value
-    }
-
-    /// 解析并按 key 排序（失败返回 nil）。
-    public static func parse(_ text: String) -> JSONValue? {
-        (try? parseThrowing(text))?.sorted()
-    }
-
-    /// 便捷入口：解析、按 key 排序、序列化，一步完成（失败返回 nil）。
-    public static func parseAndSerialize(
-        _ text: String,
-        indent: IndentStyle = .spaces2
-    ) -> String? {
-        guard let value = parse(text) else { return nil }
-        return JSONSerializer.serialize(value, indent: indent)
     }
 }
 

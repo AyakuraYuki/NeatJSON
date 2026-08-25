@@ -76,6 +76,7 @@ struct MainEditorView: View {
                 formattedOutput: model.diffFormattedOutput,
                 indent: model.diffIndent
             )
+            .presentationSizing(.fitted)
         }
     }
 
@@ -106,14 +107,8 @@ struct MainEditorView: View {
         if isEmpty {
             Text(
                 role == .input
-                    ? String(
-                        localized: "pane.input.placeholder",
-                        defaultValue: "Type or paste JSON…"
-                    )
-                    : String(
-                        localized: "pane.output.placeholder",
-                        defaultValue: "Formatted result"
-                    )
+                    ? String(localized: "pane.input.placeholder", defaultValue: "Type or paste JSON…")
+                    : String(localized: "pane.output.placeholder", defaultValue: "Formatted result")
             )
             .font(.system(size: editorFontSize, design: .monospaced))
             .foregroundStyle(.tertiary)

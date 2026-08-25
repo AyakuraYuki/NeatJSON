@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// 玻璃徽章：状态指示用的小型 Liquid Glass 元件。

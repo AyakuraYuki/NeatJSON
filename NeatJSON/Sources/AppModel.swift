@@ -117,7 +117,7 @@ final class AppModel {
         indent: IndentStyle
     ) -> Result<String, JSONParseError> {
         do {
-            let value = try JSONParser.parseThrowing(text)
+            let value = try JSONParser.parse(text)
             // 不补尾随换行：编辑器里那会多出一个空行，复制出去也多一个换行。
             return .success(
                 JSONSerializer.serialize(value, indent: indent, trailingNewline: false)

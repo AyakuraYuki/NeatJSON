@@ -6,7 +6,7 @@ final class JSONEngineTests: XCTestCase {
     // MARK: - 基础解析与序列化
 
     func testSimpleObject() throws {
-        let value = try JSONParser.parseThrowing(#"{"b": 1, "a": 2}"#)
+        let value = try JSONParser.parse(#"{"b": 1, "a": 2}"#)
         let output = JSONSerializer.serialize(value)
         XCTAssertEqual(
             output,
@@ -24,7 +24,7 @@ final class JSONEngineTests: XCTestCase {
         let input = """
         {"z": {"b": 2, "a": 1}, "a": [3, 1, {"y": true, "x": false}]}
         """
-        let output = try JSONSerializer.serialize(JSONParser.parseThrowing(input))
+        let output = try JSONSerializer.serialize(JSONParser.parse(input))
         XCTAssertEqual(
             output,
             """
@@ -50,7 +50,7 @@ final class JSONEngineTests: XCTestCase {
     func testArrayOrderPreserved() throws {
         // 数组元素顺序不能变，但其中的对象键要排序
         let output = try JSONSerializer.serialize(
-            JSONParser.parseThrowing(#"[{"b":1,"a":2}, {"z":0,"y":9}]"#)
+            JSONParser.parse(#"[{"b":1,"a":2}, {"z":0,"y":9}]"#)
         )
         XCTAssertTrue(output.contains("\"a\": 2"))
         XCTAssertTrue(output.contains("\"b\": 1"))
@@ -77,7 +77,7 @@ final class JSONEngineTests: XCTestCase {
         ]
         for (input, expected) in cases {
             let output = try JSONSerializer.serialize(
-                JSONParser.parseThrowing(input),
+                JSONParser.parse(input),
                 trailingNewline: false
             )
             XCTAssertEqual(output, expected, "input: \(input)")
@@ -85,18 +85,18 @@ final class JSONEngineTests: XCTestCase {
     }
 
     func testInvalidNumbers() {
-        XCTAssertThrowsError(try JSONParser.parseThrowing("01"))
-        XCTAssertThrowsError(try JSONParser.parseThrowing("1."))
-        XCTAssertThrowsError(try JSONParser.parseThrowing("1e"))
-        XCTAssertThrowsError(try JSONParser.parseThrowing("-"))
-        XCTAssertThrowsError(try JSONParser.parseThrowing("+1"))
+        XCTAssertThrowsError(try JSONParser.parse("01"))
+        XCTAssertThrowsError(try JSONParser.parse("1."))
+        XCTAssertThrowsError(try JSONParser.parse("1e"))
+        XCTAssertThrowsError(try JSONParser.parse("-"))
+        XCTAssertThrowsError(try JSONParser.parse("+1"))
     }
 
     // MARK: - 转义
 
     func testStringEscapes() throws {
         // 字面 emoji（非转义）原样解析
-        let parsed = try JSONParser.parseThrowing(#""😀""#)
+        let parsed = try JSONParser.parse(#""😀""#)
         XCTAssertEqual(parsed, .string("😀"))
 
         // 序列化时非 ASCII 原样输出、控制字符转义
@@ -114,14 +114,14 @@ final class JSONEngineTests: XCTestCase {
     /// 合法的代理对被误报成 invalid-unicode-escape，组合路径不可达。
     func testSurrogatePairEscape() throws {
         // 典型 emoji（必须以转义形式书写，才会走代理对组合路径）
-        XCTAssertEqual(try JSONParser.parseThrowing(#""\ud83d\ude00""#), .string("😀"))
+        XCTAssertEqual(try JSONParser.parse(#""\ud83d\ude00""#), .string("😀"))
         // 边界：最小 / 最大代理对
-        XCTAssertEqual(try JSONParser.parseThrowing(#""\ud800\udc00""#), .string("\u{10000}"))
-        XCTAssertEqual(try JSONParser.parseThrowing(#""\udbff\udfff""#), .string("\u{10FFFF}"))
+        XCTAssertEqual(try JSONParser.parse(#""\ud800\udc00""#), .string("\u{10000}"))
+        XCTAssertEqual(try JSONParser.parse(#""\udbff\udfff""#), .string("\u{10FFFF}"))
         // 与普通字符混排
-        XCTAssertEqual(try JSONParser.parseThrowing(#""a\ud83d\ude00b""#), .string("a😀b"))
+        XCTAssertEqual(try JSONParser.parse(#""a\ud83d\ude00b""#), .string("a😀b"))
         // 连续两个代理对
-        XCTAssertEqual(try JSONParser.parseThrowing(#""\ud83d\ude00\ud83d\ude00""#), .string("😀😀"))
+        XCTAssertEqual(try JSONParser.parse(#""\ud83d\ude00\ud83d\ude00""#), .string("😀😀"))
     }
 
     func testLoneSurrogateRejected() {
@@ -137,7 +137,7 @@ final class JSONEngineTests: XCTestCase {
             "\"\\ud83d\\u0041\"", // 高位后随非代理 \u 转义
         ]
         for input in cases {
-            XCTAssertThrowsError(try JSONParser.parseThrowing(input), "input: \(input)") { error in
+            XCTAssertThrowsError(try JSONParser.parse(input), "input: \(input)") { error in
                 XCTAssertEqual(
                     (error as? JSONParseError)?.message,
                     loneMessage,
@@ -148,14 +148,14 @@ final class JSONEngineTests: XCTestCase {
     }
 
     func testControlCharacterRejected() {
-        XCTAssertThrowsError(try JSONParser.parseThrowing("\"a\u{01}b\""))
+        XCTAssertThrowsError(try JSONParser.parse("\"a\u{01}b\""))
     }
 
     // MARK: - 错误定位
 
     func testErrorLineColumn() {
         let input = "{\n  \"a\": 1,\n  \"b\"\n}"
-        XCTAssertThrowsError(try JSONParser.parseThrowing(input)) { error in
+        XCTAssertThrowsError(try JSONParser.parse(input)) { error in
             let parseError = error as? JSONParseError
             XCTAssertNotNil(parseError)
             XCTAssertEqual(parseError?.line, 3)
@@ -175,7 +175,7 @@ final class JSONEngineTests: XCTestCase {
             ("\"a\\\nb\"", 1, 4), // 非法转义是换行符，在第 1 行第 4 列
         ]
         for (input, line, column) in cases {
-            XCTAssertThrowsError(try JSONParser.parseThrowing(input), "input: \(input)") { error in
+            XCTAssertThrowsError(try JSONParser.parse(input), "input: \(input)") { error in
                 let parseError = error as? JSONParseError
                 XCTAssertEqual(parseError?.line, line, "input: \(input)")
                 XCTAssertEqual(parseError?.column, column, "input: \(input)")
@@ -186,7 +186,7 @@ final class JSONEngineTests: XCTestCase {
     func testDepthLimit() {
         let depth = 600
         let input = String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
-        XCTAssertThrowsError(try JSONParser.parseThrowing(input)) { error in
+        XCTAssertThrowsError(try JSONParser.parse(input)) { error in
             XCTAssertEqual((error as? JSONParseError)?.message.isEmpty, false)
         }
     }
@@ -201,10 +201,10 @@ final class JSONEngineTests: XCTestCase {
         }
         let limit = JSONParser.maximumDepth
         XCTAssertNoThrow(
-            try JSONParser.parseThrowing(nested(limit + 1)),
+            try JSONParser.parse(nested(limit + 1)),
             "恰好到上限应当通过"
         )
-        XCTAssertThrowsError(try JSONParser.parseThrowing(nested(limit + 2))) { error in
+        XCTAssertThrowsError(try JSONParser.parse(nested(limit + 2))) { error in
             let message = (error as? JSONParseError)?.message
             // 其余解析错误的 message 都是不含数字的静态串（行列号是在
             // localizedDescription 里才拼上的），所以「带上限数字」足以区分。
@@ -217,7 +217,7 @@ final class JSONEngineTests: XCTestCase {
     }
 
     func testTrailingGarbageRejected() {
-        XCTAssertThrowsError(try JSONParser.parseThrowing("{} extra"))
+        XCTAssertThrowsError(try JSONParser.parse("{} extra"))
     }
 
     // MARK: - 本地化资源完整性
@@ -323,7 +323,7 @@ final class JSONEngineTests: XCTestCase {
 
     func testEmptyObjectAndArray() throws {
         let output = try JSONSerializer.serialize(
-            JSONParser.parseThrowing(#"{"a": [], "b": {}}"#),
+            JSONParser.parse(#"{"a": [], "b": {}}"#),
             trailingNewline: false
         )
         XCTAssertEqual(output, "{\n  \"a\": [],\n  \"b\": {}\n}")
@@ -332,7 +332,7 @@ final class JSONEngineTests: XCTestCase {
     // MARK: - 缩进
 
     func testIndentStyles() throws {
-        let value = try JSONParser.parseThrowing(#"{"a": [1]}"#)
+        let value = try JSONParser.parse(#"{"a": [1]}"#)
         XCTAssertEqual(
             JSONSerializer.serialize(value, indent: .spaces4, trailingNewline: false),
             "{\n    \"a\": [\n        1\n    ]\n}"
@@ -346,7 +346,7 @@ final class JSONEngineTests: XCTestCase {
     func testSortKeyOrder() throws {
         // 字典序：大写字母在小写之前（Unicode 码点序）
         let output = try JSONSerializer.serialize(
-            JSONParser.parseThrowing(#"{"b": 1, "A": 2, "a": 3}"#),
+            JSONParser.parse(#"{"b": 1, "A": 2, "a": 3}"#),
             trailingNewline: false
         )
         let aIdx = output.range(of: "\"A\"")!.lowerBound
@@ -359,7 +359,7 @@ final class JSONEngineTests: XCTestCase {
     // MARK: - 不排序序列化（diff 左侧规范化依赖它）
 
     func testSerializeKeepsOriginalOrderWhenNotSorting() throws {
-        let value = try JSONParser.parseThrowing(#"{"b": 1, "a": 2, "c": {"z": 1, "y": 2}}"#)
+        let value = try JSONParser.parse(#"{"b": 1, "a": 2, "c": {"z": 1, "y": 2}}"#)
         let output = JSONSerializer.serialize(
             value,
             sortKeys: false,
@@ -385,7 +385,7 @@ final class JSONEngineTests: XCTestCase {
     /// 比较前要去掉行尾逗号：键换位会连带改变哪一行是「最后一个成员」，
     /// 因此逗号位置本来就会变（这也是 diff 里键移动会顺带显示逗号变化的原因）。
     func testSerializeSortedAndUnsortedAgreeOnContent() throws {
-        let value = try JSONParser.parseThrowing(#"{"b": [1, {"q": 0, "p": 1}], "a": "x"}"#)
+        let value = try JSONParser.parse(#"{"b": [1, {"q": 0, "p": 1}], "a": "x"}"#)
 
         func normalized(_ text: String) -> [String] {
             text.split(separator: "\n")
@@ -412,7 +412,7 @@ final class JSONEngineTests: XCTestCase {
           "b": 2
         }
         """
-        let output = JSONSerializer.serialize(try! JSONParser.parseThrowing(input))
+        let output = JSONSerializer.serialize(try! JSONParser.parse(input))
         let document = DiffDocument.prepare(
             rawInput: input,
             formattedOutput: output,
@@ -426,7 +426,7 @@ final class JSONEngineTests: XCTestCase {
     /// 压缩成一行的输入也会先被展开，因此差异只反映键顺序而不是整体替换。
     func testDiffDocumentNormalizesMinifiedInput() {
         let input = #"{"b":1,"a":2}"#
-        let output = JSONSerializer.serialize(try! JSONParser.parseThrowing(input))
+        let output = JSONSerializer.serialize(try! JSONParser.parse(input))
         let document = DiffDocument.prepare(
             rawInput: input,
             formattedOutput: output,
@@ -446,7 +446,7 @@ final class JSONEngineTests: XCTestCase {
     func testDiffDocumentRespectsIndentStyle() {
         let input = #"{"b":1,"a":2}"#
         let output = JSONSerializer.serialize(
-            try! JSONParser.parseThrowing(input),
+            try! JSONParser.parse(input),
             indent: .tab
         )
         let document = DiffDocument.prepare(
@@ -486,7 +486,7 @@ final class JSONEngineTests: XCTestCase {
     /// 两侧是否带尾随换行属于书写习惯，不该在 diff 里显示成一行增删。
     func testDiffIgnoresTrailingNewlineDifference() {
         let input = #"{"a":1,"b":2}"#
-        let value = try! JSONParser.parseThrowing(input)
+        let value = try! JSONParser.parse(input)
         let withNewline = JSONSerializer.serialize(value, trailingNewline: true)
         let withoutNewline = JSONSerializer.serialize(value, trailingNewline: false)
         for output in [withNewline, withoutNewline] {
@@ -520,7 +520,7 @@ final class JSONEngineTests: XCTestCase {
         }
         """
         let output = JSONSerializer.serialize(
-            try! JSONParser.parseThrowing(input),
+            try! JSONParser.parse(input),
             trailingNewline: false
         )
         let document = DiffDocument.prepare(

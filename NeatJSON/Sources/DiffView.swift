@@ -1,18 +1,30 @@
+import AppKit
 import SwiftUI
 import Synchronization
 
 /// JetBrains 风格 side-by-side diff 视图。
 ///
+/// 结构：SwiftUI 负责外壳（头部、统计胶囊、列标题、进度态），正文两栏
+/// 交给 AppKit（`DiffSideBySidePane`）。此前正文是 SwiftUI 的
+/// `ScrollView(.vertical)` 内嵌 `ScrollView(.horizontal)`，在 macOS 上
+/// 嵌套异轴 ScrollView 的滚轮事件全部被外层吞掉，横向始终滚不动；
+/// 且内层 LazyVStack 拿到的是无界高度提案，惰性也名存实亡。
+/// 现改为每栏一个原生 `NSScrollView`（不换行 NSTextView），像文本编辑器
+/// 一样上下、左右自由滚动：
+/// - 行号用 `NSRulerView` 实现，横向滚动时天然钉在左侧不被卷走；
+/// - 左右两栏纵向滚动用 clip view 的 bounds 通知互相镜像，零延迟同步；
+///   横向滚动互不影响；
+/// - 行底色/行内高亮由 `DiffPaneTextView` 自绘：行底色铺满整栏宽度
+///   （包括横向滚出的部分），高亮矩形按 layoutManager 的字形位置精确定位；
+/// - 文本可选中、可复制、支持 ⌘F 查找。
+///
 /// 性能要点（对应此前「弹窗要等很久、滚动卡」）：
-/// - **所有** 计算都在后台：`init` 不再切行也不再算 diff（1 MB 输入光切行
-///   就能卡住 sheet 的构建），弹窗立刻出现并显示进度态；
-/// - 统计（+/-）在后台一次算好存进 `DiffDocument`，不再是每次 `body`
-///   求值都要全量 `filter` 两遍的计算属性；
-/// - 单个 `LazyVStack`，每行一次性渲染左右两半：视图数量减半、左右天然
-///   对齐，且不再有逐行 `Divider()`；
-/// - `ForEach(rows.indices)` 而非 `ForEach(Array(rows.enumerated()))`
-///   （后者每次 `body` 都重建整个元组数组，左右列各一次）；
-/// - 行内 word 高亮按可见行惰性计算并缓存，弹窗耗时与 modified 行数脱钩；
+/// - **所有** 计算都在后台：`init` 不切行也不算 diff，弹窗立刻出现并显示
+///   进度态；行内 word 高亮也在后台随 diff 一并算好（`DiffDocument.inline`）；
+/// - 统计（+/-）在后台一次算好存进 `DiffDocument`；
+/// - 折叠/展开后的可渲染行统一物化成 `DiffRenderRow` 数组，左右两栏
+///   从结构上保证行数一致、逐行对齐；
+/// - NSTextView 开启非连续布局，只排版可见区域；
 /// - 关闭 sheet 会真正取消后台计算。
 ///
 /// 语义要点：左侧是**按当前缩进重排、但保留原始 key 顺序**的输入，
@@ -32,15 +44,14 @@ struct DiffView: View {
     /// nil = 正在后台计算
     @State private var document: DiffDocument?
     @State private var limits: DiffEngine.Limits = .balanced
-    /// 行内高亮缓存。普通 class，不参与 SwiftUI 观察，在 body 里按需填充。
-    @State private var inlineCache = InlineCache()
     /// 被用户展开的折叠块（按行下标）。
     @State private var expanded: Set<Int> = []
-
-    private let rowHeight: CGFloat = 20
-    private let gutterWidth: CGFloat = 52
-    /// 变更点两侧保留的上下文行数，其余未变更行折叠。
-    private static let collapseContext = 3
+    /// 左/右两栏的可渲染行（已按 `expanded` 展开），行数恒相等。
+    @State private var oldRows: [DiffRenderRow] = []
+    @State private var newRows: [DiffRenderRow] = []
+    /// 行内容的代次。AppKit 层以它判断是否需要重建文本，
+    /// 避免 SwiftUI 每次 body 求值都触发 O(行数) 的数组比较。
+    @State private var revision = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,8 +70,9 @@ struct DiffView: View {
 
     private func load() async {
         document = nil
-        inlineCache.reset()
         expanded = []
+        oldRows = []
+        newRows = []
 
         let raw = rawInput
         let output = formattedOutput
@@ -84,6 +96,26 @@ struct DiffView: View {
 
         guard !Task.isCancelled else { return }
         document = prepared
+        rebuildRows(with: prepared)
+    }
+
+    /// 展开/收起一个折叠块，并同步重建两栏的渲染行。
+    /// 左右两栏的折叠条都调用这一个函数，`Set` 的 insert/remove 天然幂等。
+    private func toggleExpanded(_ index: Int) {
+        if expanded.contains(index) {
+            expanded.remove(index)
+        } else {
+            expanded.insert(index)
+        }
+        guard let document else { return }
+        rebuildRows(with: document)
+    }
+
+    private func rebuildRows(with document: DiffDocument) {
+        let flat = flatten(document: document, expanded: expanded)
+        oldRows = renderRows(document: document, flatRows: flat, expanded: expanded, isOld: true)
+        newRows = renderRows(document: document, flatRows: flat, expanded: expanded, isOld: false)
+        revision += 1
     }
 
     // MARK: - 头部
@@ -205,7 +237,7 @@ struct DiffView: View {
         Text(text)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.secondary)
-            .padding(.leading, gutterWidth)
+            .padding(.leading, 52)
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -222,22 +254,13 @@ struct DiffView: View {
                     identicalBanner
                     Divider()
                 }
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(document.rows.indices, id: \.self) { index in
-                            rowView(at: index, document: document)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .textSelection(.enabled)
-                // 中缝：一条视口高度的线，而不是每行一个 Divider
-                .overlay(alignment: .center) {
-                    Rectangle()
-                        .fill(.separator)
-                        .frame(width: 1)
-                        .allowsHitTesting(false)
-                }
+                DiffSideBySidePane(
+                    oldRows: oldRows,
+                    newRows: newRows,
+                    revision: revision,
+                    onToggle: toggleExpanded
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } else {
             placeholder(
@@ -276,238 +299,827 @@ struct DiffView: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
 
-    // MARK: - 行
+// MARK: - 行渲染辅助类型
 
-    @ViewBuilder
-    private func rowView(at index: Int, document: DiffDocument) -> some View {
+/// 展开折叠块后的扁平行描述。左右两栏共用同一份数组生成渲染行，
+/// 从结构上保证下标永远对齐。
+enum FlatRow: Identifiable {
+    /// 非折叠行，对应 `document.rows[index]`。
+    case row(Int)
+    /// 折叠提示条本身（「N 处未更改」）。
+    case collapsedHeader(Int)
+    /// 折叠块展开后的一行未变更配对。
+    case collapsedPair(headerIndex: Int, oldIndex: Int, newIndex: Int)
+
+    var id: String {
+        switch self {
+        case .row(let i): "r\(i)"
+        case .collapsedHeader(let i): "h\(i)"
+        case .collapsedPair(let h, let o, _): "p\(h)_\(o)"
+        }
+    }
+}
+
+/// 把 `document.rows` 按 `expanded` 展开成的扁平行列表。
+func flatten(document: DiffDocument, expanded: Set<Int>) -> [FlatRow] {
+    var result: [FlatRow] = []
+    result.reserveCapacity(document.rows.count)
+    for index in document.rows.indices {
         let row = document.rows[index]
         if case .collapsed(let oldRange, let newRange) = row.kind {
-            let isExpanded = expanded.contains(index)
-            // 标记行常驻：折叠时点它展开，展开时点它收起
-            collapsedRow(index: index, count: oldRange.count, isExpanded: isExpanded)
-            if isExpanded {
-                ForEach(0 ..< oldRange.count, id: \.self) { offset in
-                    pairRow(
-                        oldIndex: oldRange.lowerBound + offset,
-                        newIndex: newRange.lowerBound + offset,
-                        document: document
+            result.append(.collapsedHeader(index))
+            if expanded.contains(index) {
+                for offset in 0 ..< oldRange.count {
+                    result.append(
+                        .collapsedPair(
+                            headerIndex: index,
+                            oldIndex: oldRange.lowerBound + offset,
+                            newIndex: newRange.lowerBound + offset
+                        )
                     )
                 }
             }
         } else {
-            HStack(spacing: 0) {
-                side(row, index: index, document: document, isOld: true)
-                side(row, index: index, document: document, isOld: false)
-            }
+            result.append(.row(index))
+        }
+    }
+    return result
+}
+
+/// 一侧（old 或 new）一行的全部渲染数据。纯值类型，可跨隔离域传递。
+struct DiffRenderRow: Equatable, Sendable {
+    var text: String
+    var lineNumber: Int?
+    var tone: DiffTone
+    /// 行内 word 高亮（Character 偏移区间）。
+    var highlights: [Range<Int>]
+    /// 非 nil = 这一行是折叠提示条。
+    var collapse: DiffCollapseMarker?
+}
+
+struct DiffCollapseMarker: Equatable, Sendable {
+    /// `document.rows` 中折叠块的下标，回传给 `onToggle`。
+    var index: Int
+    var isExpanded: Bool
+}
+
+enum DiffTone: Equatable, Sendable {
+    case unchanged
+    case added
+    case removed
+    /// 对侧不存在的占位行
+    case absent
+
+    func background(_ palette: DiffPanePalette) -> NSColor? {
+        switch self {
+        case .unchanged, .absent: nil
+        case .added: palette.addedBackground
+        case .removed: palette.removedBackground
         }
     }
 
-    /// 展开后的未变更行（左右同内容）。
-    private func pairRow(oldIndex: Int, newIndex: Int, document: DiffDocument) -> some View {
-        HStack(spacing: 0) {
-            lineCell(
-                text: document.oldLines[oldIndex],
-                lineNumber: oldIndex + 1,
-                tone: .unchanged,
-                highlights: []
-            )
-            lineCell(
-                text: document.newLines[newIndex],
-                lineNumber: newIndex + 1,
-                tone: .unchanged,
-                highlights: []
-            )
+    func highlight(_ palette: DiffPanePalette) -> NSColor? {
+        switch self {
+        case .unchanged, .absent: nil
+        case .added: palette.addedHighlight
+        case .removed: palette.removedHighlight
         }
     }
 
-    private func collapsedRow(index: Int, count: Int, isExpanded: Bool) -> some View {
-        Button {
-            if isExpanded {
-                expanded.remove(index)
-            } else {
-                expanded.insert(index)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isExpanded ? "chevron.up.circle" : "chevron.down.circle")
-                    .font(.system(size: 10))
-                Text(
-                    String(
-                        localized: "diff.collapsed",
-                        defaultValue: "\(count) unchanged lines"
+    func edge(_ palette: DiffPanePalette) -> NSColor? {
+        switch self {
+        case .unchanged, .absent: nil
+        case .added: palette.addedEdge
+        case .removed: palette.removedEdge
+        }
+    }
+}
+
+/// 把扁平行物化成一侧的渲染行。行内高亮直接取 `document.inline`
+/// （后台已随 diff 一并算好），这里不做任何耗时计算。
+func renderRows(
+    document: DiffDocument,
+    flatRows: [FlatRow],
+    expanded: Set<Int>,
+    isOld: Bool
+) -> [DiffRenderRow] {
+    var result: [DiffRenderRow] = []
+    result.reserveCapacity(flatRows.count)
+    for flat in flatRows {
+        switch flat {
+        case .collapsedHeader(let index):
+            guard case .collapsed(let oldRange, _) = document.rows[index].kind else { continue }
+            let isExpanded = expanded.contains(index)
+            let count = oldRange.count
+            let label = String(
+                localized: "diff.collapsed",
+                defaultValue: "\(count) unchanged lines"
+            )
+            result.append(
+                DiffRenderRow(
+                    text: (isExpanded ? "▾  " : "▸  ") + label,
+                    lineNumber: nil,
+                    tone: .unchanged,
+                    highlights: [],
+                    collapse: DiffCollapseMarker(index: index, isExpanded: isExpanded)
+                )
+            )
+        case .collapsedPair(_, let oldIndex, let newIndex):
+            let lineIndex = isOld ? oldIndex : newIndex
+            result.append(
+                DiffRenderRow(
+                    text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
+                    lineNumber: lineIndex + 1,
+                    tone: .unchanged,
+                    highlights: [],
+                    collapse: nil
+                )
+            )
+        case .row(let index):
+            switch document.rows[index].kind {
+            case .equal(let oldIndex, let newIndex):
+                let lineIndex = isOld ? oldIndex : newIndex
+                result.append(
+                    DiffRenderRow(
+                        text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
+                        lineNumber: lineIndex + 1,
+                        tone: .unchanged,
+                        highlights: [],
+                        collapse: nil
                     )
                 )
-                .font(.system(size: 10, design: .monospaced))
-                Spacer(minLength: 0)
+            case .delete(let oldIndex):
+                if isOld {
+                    result.append(
+                        DiffRenderRow(
+                            text: document.oldLines[oldIndex],
+                            lineNumber: oldIndex + 1,
+                            tone: .removed,
+                            highlights: [],
+                            collapse: nil
+                        )
+                    )
+                } else {
+                    // 右侧没有对应行 —— 用占位表示。
+                    result.append(
+                        DiffRenderRow(
+                            text: "", lineNumber: nil, tone: .absent, highlights: [], collapse: nil
+                        )
+                    )
+                }
+            case .insert(let newIndex):
+                if isOld {
+                    result.append(
+                        DiffRenderRow(
+                            text: "", lineNumber: nil, tone: .absent, highlights: [], collapse: nil
+                        )
+                    )
+                } else {
+                    result.append(
+                        DiffRenderRow(
+                            text: document.newLines[newIndex],
+                            lineNumber: newIndex + 1,
+                            tone: .added,
+                            highlights: [],
+                            collapse: nil
+                        )
+                    )
+                }
+            case .modified(let oldIndex, let newIndex):
+                let inline = document.inline[index] ?? DiffEngine.InlineRanges()
+                result.append(
+                    DiffRenderRow(
+                        text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
+                        lineNumber: (isOld ? oldIndex : newIndex) + 1,
+                        tone: isOld ? .removed : .added,
+                        highlights: isOld ? inline.oldRanges : inline.newRanges,
+                        collapse: nil
+                    )
+                )
+            case .collapsed:
+                continue
             }
-            .foregroundStyle(.secondary)
-            .padding(.leading, gutterWidth)
-            .frame(height: rowHeight)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.08))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(
-            isExpanded
-                ? String(localized: "diff.collapse.hint", defaultValue: "Click to collapse")
-                : String(localized: "diff.expand.hint", defaultValue: "Click to expand")
+    }
+    return result
+}
+
+// MARK: - AppKit 正文面板
+
+/// 面板用到的固定度量与字体。
+@MainActor
+enum DiffPaneMetrics {
+    static let gutterWidth: CGFloat = 52
+    static let edgeWidth: CGFloat = 2
+    static let contentFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    static let lineNumberFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+}
+
+/// 面板配色。全部是**具体 sRGB 值**而非动态 NSColor：与编辑器同一套约定 ——
+/// 动态色存进 NSTextStorage 后要等绘制时才按当时外观解析，在 Liquid Glass
+/// 材质上下文中有落到错误变体的风险；固定色由外观变化回调统一重建。
+struct DiffPanePalette {
+    let text: NSColor
+    let lineNumber: NSColor
+    let collapseText: NSColor
+    let collapseBackground: NSColor
+    let addedBackground: NSColor
+    let removedBackground: NSColor
+    let addedHighlight: NSColor
+    let removedHighlight: NSColor
+    let addedEdge: NSColor
+    let removedEdge: NSColor
+
+    static func resolve(dark: Bool) -> DiffPanePalette {
+        // systemGreen / systemRed 在浅色与深色外观下的具体 sRGB 值。
+        let green = dark
+            ? NSColor(srgbRed: 0.188, green: 0.820, blue: 0.345, alpha: 1)
+            : NSColor(srgbRed: 0.204, green: 0.780, blue: 0.349, alpha: 1)
+        let red = dark
+            ? NSColor(srgbRed: 1.000, green: 0.271, blue: 0.227, alpha: 1)
+            : NSColor(srgbRed: 1.000, green: 0.231, blue: 0.188, alpha: 1)
+        // 正文色与编辑器一致（JSONTextView.lightText / darkText）。
+        let text = dark
+            ? NSColor(srgbRed: 0.92, green: 0.92, blue: 0.95, alpha: 1)
+            : NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 1)
+        return DiffPanePalette(
+            text: text,
+            lineNumber: text.withAlphaComponent(0.38),
+            collapseText: text.withAlphaComponent(0.55),
+            collapseBackground: text.withAlphaComponent(0.06),
+            addedBackground: green.withAlphaComponent(0.14),
+            removedBackground: red.withAlphaComponent(0.14),
+            addedHighlight: green.withAlphaComponent(0.32),
+            removedHighlight: red.withAlphaComponent(0.32),
+            addedEdge: green.withAlphaComponent(0.8),
+            removedEdge: red.withAlphaComponent(0.8)
+        )
+    }
+}
+
+/// 正文两栏（NSViewRepresentable 桥）。
+struct DiffSideBySidePane: NSViewRepresentable {
+    let oldRows: [DiffRenderRow]
+    let newRows: [DiffRenderRow]
+    /// 行内容代次：不变则 `updateNSView` 是纯 no-op，
+    /// SwiftUI 的无关重渲染（如拖拽调整窗口）不会触碰文本。
+    let revision: Int
+    let onToggle: (Int) -> Void
+
+    func makeNSView(context: Context) -> DiffPaneContainerView {
+        let view = DiffPaneContainerView()
+        view.onToggle = onToggle
+        view.apply(oldRows: oldRows, newRows: newRows, revision: revision)
+        return view
+    }
+
+    func updateNSView(_ view: DiffPaneContainerView, context: Context) {
+        view.onToggle = onToggle
+        view.apply(oldRows: oldRows, newRows: newRows, revision: revision)
+    }
+
+    /// 容器没有固有尺寸，必须显式接住 SwiftUI 的尺寸提案：默认实现会在
+    /// 理想尺寸探测时把视图压成 ~1pt 高，再被外层 frame 居中，正文直接
+    /// 消失。有具体提案就原样采用（铺满可用空间），理想探测则退回最小
+    /// 可用尺寸。
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        nsView: DiffPaneContainerView,
+        context: Context
+    ) -> NSSize? {
+        NSSize(width: proposal.width ?? 820, height: proposal.height ?? 440)
+    }
+}
+
+/// 两栏容器：左右各一个 NSScrollView + 中缝分隔线，负责纵向滚动同步
+/// 与外观变化时的整体重建。
+final class DiffPaneContainerView: NSView {
+    private let leftColumn: DiffPaneColumn
+    private let rightColumn: DiffPaneColumn
+    private let divider = NSBox()
+
+    var onToggle: ((Int) -> Void)? {
+        didSet {
+            leftColumn.onToggle = onToggle
+            rightColumn.onToggle = onToggle
+        }
+    }
+
+    private var appliedRevision = -1
+    private var oldRows: [DiffRenderRow] = []
+    private var newRows: [DiffRenderRow] = []
+    /// 镜像滚动时置位，阻断两个 clip view 互相触发的通知回环。
+    private var isSyncingScroll = false
+
+    init() {
+        // 纵向滚动条只留右栏一根（JetBrains 同款）：左栏没有滚动条
+        // 也照常接收滚轮/触控板事件，同步逻辑会把它带上。
+        leftColumn = DiffPaneColumn(showsVerticalScroller: false)
+        rightColumn = DiffPaneColumn(showsVerticalScroller: true)
+        super.init(frame: .zero)
+        wantsLayer = true
+
+        divider.boxType = .separator
+
+        for view in [leftColumn.view, divider, rightColumn.view] {
+            addSubview(view)
+        }
+
+        // 纵向同步：监听两个 clip view 的 bounds 变化互相镜像。
+        // 选择器式观察者在 dealloc 时由 NotificationCenter 自动解除。
+        for clipView in [leftColumn.scrollView.contentView, rightColumn.scrollView.contentView] {
+            clipView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(clipViewBoundsDidChange(_:)),
+                name: NSView.boundsDidChangeNotification,
+                object: clipView
+            )
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    func apply(oldRows: [DiffRenderRow], newRows: [DiffRenderRow], revision: Int) {
+        guard revision != appliedRevision else { return }
+        appliedRevision = revision
+        self.oldRows = oldRows
+        self.newRows = newRows
+        rebuildContent()
+    }
+
+    /// 按当前外观解析配色并重建两栏文本。
+    private func rebuildContent() {
+        let palette = DiffPanePalette.resolve(dark: isDarkAppearance)
+        leftColumn.apply(rows: oldRows, palette: palette)
+        rightColumn.apply(rows: newRows, palette: palette)
+    }
+
+    /// makeNSView 阶段视图尚未挂到 window，`effectiveAppearance` 可能给出
+    /// 与最终环境相反的结果，因此优先取 window / 应用外观（与编辑器同款）。
+    private var isDarkAppearance: Bool {
+        let appearance = window?.effectiveAppearance
+            ?? NSApp?.effectiveAppearance
+            ?? effectiveAppearance
+        return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        rebuildContent()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        rebuildContent()
+    }
+
+    /// 手动排布两栏与中缝。刻意不用 Auto Layout：SwiftUI 宿主直接
+    /// setFrame 驱动本视图，实测子视图约束在容器 resize 后只重解了
+    /// 宽度、高度停在初值上（引擎没有随 frame 变化重跑），手动布局
+    /// 则完全确定。
+    override func layout() {
+        super.layout()
+        let height = bounds.height
+        let columnWidth = max(0, (bounds.width - 1) / 2)
+        leftColumn.view.frame = NSRect(x: 0, y: 0, width: columnWidth, height: height)
+        divider.frame = NSRect(x: columnWidth, y: 0, width: 1, height: height)
+        rightColumn.view.frame = NSRect(
+            x: columnWidth + 1,
+            y: 0,
+            width: max(0, bounds.width - columnWidth - 1),
+            height: height
+        )
+        // 保证短内容时 textView 至少铺满视口，行底色才能画满整栏。
+        leftColumn.updateMinimumContentSize()
+        rightColumn.updateMinimumContentSize()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
+    @objc private func clipViewBoundsDidChange(_ notification: Notification) {
+        guard !isSyncingScroll,
+              let changed = notification.object as? NSClipView
+        else { return }
+        let leftClip = leftColumn.scrollView.contentView
+        let other = changed === leftClip ? rightColumn.scrollView.contentView : leftClip
+        if other.bounds.origin.y != changed.bounds.origin.y {
+            isSyncingScroll = true
+            var origin = other.bounds.origin
+            origin.y = changed.bounds.origin.y
+            other.setBoundsOrigin(origin)
+            (other.superview as? NSScrollView)?.reflectScrolledClipView(other)
+            isSyncingScroll = false
+        }
+        leftColumn.gutter.needsDisplay = true
+        rightColumn.gutter.needsDisplay = true
+    }
+}
+
+/// 一栏：固定 52pt 的自绘行号列 + 不换行 NSTextView 的 NSScrollView
+/// （原生双向滚动、可选中复制）。行号列在滚动视图**外面**，
+/// 横向滚动天然碰不到它；纵向位置按 textView 的真实行矩形换算。
+/// （不用 NSRulerView：这版 SDK 里它的排布不给内容让位，正文会
+/// 顶进标尺下面和行号重叠。）
+@MainActor
+final class DiffPaneColumn {
+    let view = DiffColumnView()
+    let scrollView = NSScrollView()
+    let textView: DiffPaneTextView
+    let gutter: DiffGutterView
+    /// TextKit 1 经典陷阱：NSLayoutManager 对 NSTextStorage 是弱引用，
+    /// 必须有人强持有 storage，否则会被提前释放。
+    private let storage: NSTextStorage
+
+    var onToggle: ((Int) -> Void)? {
+        get { textView.onToggleCollapse }
+        set { textView.onToggleCollapse = newValue }
+    }
+
+    init(showsVerticalScroller: Bool) {
+        // 显式搭 TextKit 1 栈：行底色/高亮自绘、非连续布局都依赖
+        // NSLayoutManager 的字形几何接口。
+        let huge = CGFloat.greatestFiniteMagnitude
+        storage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        layoutManager.allowsNonContiguousLayout = true
+        let container = NSTextContainer(size: NSSize(width: huge, height: huge))
+        container.widthTracksTextView = false
+        container.heightTracksTextView = false
+        container.lineFragmentPadding = 6
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(container)
+
+        textView = DiffPaneTextView(frame: .zero, textContainer: container)
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        // 背景由 sheet 的玻璃材质提供；行底色/高亮由 draw(_:) 自绘。
+        textView.drawsBackground = false
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
+        // 不换行 + 双向可伸展：超长行交给横向滚动，与编辑器一致。
+        textView.isHorizontallyResizable = true
+        textView.isVerticallyResizable = true
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: huge, height: huge)
+        textView.textContainerInset = .zero
+        textView.font = DiffPaneMetrics.contentFont
+        textView.wantsLayer = true
+
+        scrollView.documentView = textView
+        scrollView.hasVerticalScroller = showsVerticalScroller
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        // 保持 automaticallyAdjustsContentInsets 为默认 true：现代 AppKit
+        // 的 NSRulerView 浮在 clip view 上方，靠自动 contentInsets.left
+        // 给内容让位；关掉它内容会顶进标尺下面、和行号重叠。
+        scrollView.wantsLayer = true
+
+        gutter = DiffGutterView()
+        gutter.textView = textView
+
+        view.gutter = gutter
+        view.scrollView = scrollView
+        view.addSubview(gutter)
+        view.addSubview(scrollView)
+    }
+
+    func apply(rows: [DiffRenderRow], palette: DiffPanePalette) {
+        textView.apply(rows: rows, palette: palette)
+        gutter.needsDisplay = true
+    }
+
+    /// textView 至少和视口一样大：内容比视口短/窄时行底色也能铺满。
+    /// （双向 resizable 的 NSTextView 会自动收缩到 max(内容尺寸, minSize)。）
+    func updateMinimumContentSize() {
+        let size = scrollView.contentSize
+        guard textView.minSize != size else { return }
+        textView.minSize = size
+        var frameSize = textView.frame.size
+        frameSize.width = max(frameSize.width, size.width)
+        frameSize.height = max(frameSize.height, size.height)
+        if frameSize != textView.frame.size {
+            textView.setFrameSize(frameSize)
+        }
+    }
+}
+
+/// 只读、不换行的 diff 文本视图：
+/// - 行底色（增/删/折叠条）自绘并铺满整栏宽度，包括横向滚出的部分；
+/// - 行内 word 高亮按 layoutManager 的字形矩形精确绘制；
+/// - 点击折叠条任意位置展开/收起（整行都是点击区，不只是文字）。
+final class DiffPaneTextView: NSTextView {
+    private(set) var rowData: [DiffRenderRow] = []
+    /// 每行首字符的 UTF-16 偏移，升序；末行为空行时最后一项等于文本总长。
+    private var rowStarts: [Int] = []
+    /// 每行的行内高亮（绝对 UTF-16 区间），与 `rowData` 等长。
+    private var rowHighlights: [[NSRange]] = []
+    private(set) var palette = DiffPanePalette.resolve(dark: false)
+    var onToggleCollapse: ((Int) -> Void)?
+
+    // MARK: 内容
+
+    func apply(rows: [DiffRenderRow], palette: DiffPanePalette) {
+        self.palette = palette
+        rowData = rows
+        rowStarts.removeAll(keepingCapacity: true)
+        rowHighlights.removeAll(keepingCapacity: true)
+        rowStarts.reserveCapacity(rows.count)
+        rowHighlights.reserveCapacity(rows.count)
+
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: DiffPaneMetrics.contentFont,
+            .foregroundColor: palette.text,
+        ]
+        let collapseAttributes: [NSAttributedString.Key: Any] = [
+            .font: DiffPaneMetrics.contentFont,
+            .foregroundColor: palette.collapseText,
+        ]
+        let newline = NSAttributedString(string: "\n", attributes: baseAttributes)
+
+        let result = NSMutableAttributedString()
+        result.beginEditing()
+        var offset = 0
+        for (index, row) in rows.enumerated() {
+            if index > 0 {
+                result.append(newline)
+                offset += 1
+            }
+            rowStarts.append(offset)
+            let piece = NSAttributedString(
+                string: row.text,
+                attributes: row.collapse == nil ? baseAttributes : collapseAttributes
+            )
+            result.append(piece)
+
+            // Character 偏移 → 绝对 UTF-16 区间（行内可能有代理对字符）。
+            var absolute: [NSRange] = []
+            if !row.highlights.isEmpty {
+                var utf16Prefix = [0]
+                utf16Prefix.reserveCapacity(row.text.count + 1)
+                var running = 0
+                for character in row.text {
+                    running += character.utf16.count
+                    utf16Prefix.append(running)
+                }
+                for range in row.highlights {
+                    let lower = min(max(range.lowerBound, 0), utf16Prefix.count - 1)
+                    let upper = min(max(range.upperBound, lower), utf16Prefix.count - 1)
+                    let length = utf16Prefix[upper] - utf16Prefix[lower]
+                    if length > 0 {
+                        absolute.append(
+                            NSRange(location: offset + utf16Prefix[lower], length: length)
+                        )
+                    }
+                }
+            }
+            rowHighlights.append(absolute)
+            offset += piece.length
+        }
+        result.endEditing()
+        textStorage?.setAttributedString(result)
+        needsDisplay = true
+    }
+
+    // MARK: 行几何
+
+    /// 第 `row` 行的 line fragment 矩形（textView 坐标）。
+    /// 依赖 layoutManager 的真实布局而不是「行高 × 下标」的算术假设，
+    /// 行号列与行底色因此和字形永远严格对齐。
+    func rowRect(_ row: Int) -> NSRect {
+        guard row >= 0, row < rowStarts.count,
+              let layoutManager, let textStorage
+        else { return .zero }
+        let origin = textContainerOrigin
+        let start = rowStarts[row]
+        if start >= textStorage.length {
+            // 末行为空行（文本以换行结束）：对应 extra line fragment。
+            return layoutManager.extraLineFragmentRect.offsetBy(dx: origin.x, dy: origin.y)
+        }
+        let glyphIndex = layoutManager.glyphIndexForCharacter(at: start)
+        return layoutManager
+            .lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+            .offsetBy(dx: origin.x, dy: origin.y)
+    }
+
+    /// 与 `rect`（textView 坐标）相交的行范围。
+    func visibleRows(in rect: NSRect) -> ClosedRange<Int>? {
+        guard !rowStarts.isEmpty,
+              let layoutManager, let textContainer, let textStorage
+        else { return nil }
+        let origin = textContainerOrigin
+        let containerRect = rect.offsetBy(dx: -origin.x, dy: -origin.y)
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: textContainer)
+        let charRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        var first = rowIndex(forCharacterOffset: charRange.location)
+        var last = rowIndex(forCharacterOffset: max(charRange.location, NSMaxRange(charRange) - 1))
+        // 末行为空行时不含任何字形，glyphRange 覆盖不到，按 extra fragment 补上。
+        if let lastStart = rowStarts.last, lastStart >= textStorage.length {
+            let extra = layoutManager.extraLineFragmentRect.offsetBy(dx: origin.x, dy: origin.y)
+            if extra.height > 0, rect.intersects(extra) {
+                last = rowStarts.count - 1
+            }
+        }
+        first = max(0, min(first, rowStarts.count - 1))
+        last = max(first, min(last, rowStarts.count - 1))
+        return first ... last
+    }
+
+    /// `rowStarts` 中最后一个 ≤ offset 的下标（二分）。
+    private func rowIndex(forCharacterOffset offset: Int) -> Int {
+        var low = 0
+        var high = rowStarts.count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if rowStarts[mid] <= offset {
+                low = mid
+            } else {
+                high = mid - 1
+            }
+        }
+        return low
+    }
+
+    /// 命中测试：点（textView 坐标）落在哪一行的竖直范围内。
+    func row(at point: NSPoint) -> Int? {
+        guard !rowStarts.isEmpty, let layoutManager, let textContainer else { return nil }
+        let origin = textContainerOrigin
+        let containerPoint = NSPoint(x: point.x - origin.x, y: point.y - origin.y)
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        let row = rowIndex(forCharacterOffset: charIndex)
+        let rect = rowRect(row)
+        guard point.y >= rect.minY, point.y < rect.maxY else { return nil }
+        return row
+    }
+
+    // MARK: 绘制
+
+    override func draw(_ dirtyRect: NSRect) {
+        drawRowDecorations(in: dirtyRect)
+        super.draw(dirtyRect)
+    }
+
+    private func drawRowDecorations(in rect: NSRect) {
+        guard let rows = visibleRows(in: rect),
+              let layoutManager, let textContainer
+        else { return }
+        let origin = textContainerOrigin
+        for row in rows {
+            guard row < rowData.count, row < rowHighlights.count else { break }
+            let data = rowData[row]
+            let fragment = rowRect(row)
+            guard fragment.height > 0 else { continue }
+            // 行底色铺满整栏宽度（textView 至少和视口一样宽，见
+            // updateMinimumContentSize），横向滚出的部分同样有底色。
+            var fullWidth = fragment
+            fullWidth.origin.x = 0
+            fullWidth.size.width = bounds.width
+            if data.collapse != nil {
+                palette.collapseBackground.setFill()
+                fullWidth.fill()
+            } else if let background = data.tone.background(palette) {
+                background.setFill()
+                fullWidth.fill()
+            }
+            let highlights = rowHighlights[row]
+            if !highlights.isEmpty, let color = data.tone.highlight(palette) {
+                color.setFill()
+                for range in highlights {
+                    let glyphRange = layoutManager.glyphRange(
+                        forCharacterRange: range, actualCharacterRange: nil
+                    )
+                    layoutManager
+                        .boundingRect(forGlyphRange: glyphRange, in: textContainer)
+                        .offsetBy(dx: origin.x, dy: origin.y)
+                        .fill()
+                }
+            }
+        }
+    }
+
+    // MARK: 交互
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let row = row(at: point), let collapse = rowData[row].collapse {
+            onToggleCollapse?(collapse.index)
+            return
+        }
+        super.mouseDown(with: event)
+    }
+}
+
+/// 一栏的根视图：行号列固定 52pt 在左，滚动视图占余下宽度。
+final class DiffColumnView: NSView {
+    weak var gutter: DiffGutterView?
+    weak var scrollView: NSScrollView?
+
+    override func layout() {
+        super.layout()
+        let gutterWidth = DiffPaneMetrics.gutterWidth
+        gutter?.frame = NSRect(x: 0, y: 0, width: gutterWidth, height: bounds.height)
+        scrollView?.frame = NSRect(
+            x: gutterWidth,
+            y: 0,
+            width: max(0, bounds.width - gutterWidth),
+            height: bounds.height
         )
     }
 
-    @ViewBuilder
-    private func side(
-        _ row: DiffEngine.Row,
-        index: Int,
-        document: DiffDocument,
-        isOld: Bool
-    ) -> some View {
-        switch row.kind {
-        case .equal(let oldIndex, let newIndex):
-            lineCell(
-                text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
-                lineNumber: (isOld ? oldIndex : newIndex) + 1,
-                tone: .unchanged,
-                highlights: []
-            )
-        case .delete(let oldIndex):
-            // 右侧没有对应行 —— 旧实现在两侧都画了删除行，这里修正为占位。
-            if isOld {
-                lineCell(
-                    text: document.oldLines[oldIndex],
-                    lineNumber: oldIndex + 1,
-                    tone: .removed,
-                    highlights: []
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+}
+
+/// 行号列。在滚动视图外面，横向滚动天然碰不到它；行号、增/删底色与
+/// 2pt 色条都画在这里，内容横向滚动时保持可见 —— 这正是此前 SwiftUI
+/// 版要靠「行号列不进横向 ScrollView」手工模拟的行为。
+/// 每行的竖直位置按 textView 的真实行矩形经 convert(_:from:) 换算，
+/// 纵向滚动时由 clip view 的 bounds 通知触发重绘。
+final class DiffGutterView: NSView {
+    weak var textView: DiffPaneTextView?
+
+    /// 内容是随滚动整帧变化的，直接按行重画。
+    override var isFlipped: Bool {
+        true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let textView else { return }
+        let palette = textView.palette
+        guard let rows = textView.visibleRows(in: textView.visibleRect) else { return }
+        let numberAttributes: [NSAttributedString.Key: Any] = [
+            .font: DiffPaneMetrics.lineNumberFont,
+            .foregroundColor: palette.lineNumber,
+        ]
+        for row in rows {
+            guard row < textView.rowData.count else { break }
+            let data = textView.rowData[row]
+            let fragment = textView.rowRect(row)
+            guard fragment.height > 0 else { continue }
+            var rowRect = convert(fragment, from: textView)
+            rowRect.origin.x = 0
+            rowRect.size.width = bounds.width
+
+            if data.collapse != nil {
+                palette.collapseBackground.setFill()
+                rowRect.fill()
+            } else if let background = data.tone.background(palette) {
+                background.setFill()
+                rowRect.fill()
+            }
+            if let edge = data.tone.edge(palette) {
+                edge.setFill()
+                NSRect(
+                    x: 0,
+                    y: rowRect.minY,
+                    width: DiffPaneMetrics.edgeWidth,
+                    height: rowRect.height
+                ).fill()
+            }
+            if let number = data.lineNumber {
+                let text = String(number) as NSString
+                let size = text.size(withAttributes: numberAttributes)
+                text.draw(
+                    in: NSRect(
+                        x: bounds.width - 8 - size.width,
+                        y: rowRect.midY - size.height / 2,
+                        width: size.width,
+                        height: size.height
+                    ),
+                    withAttributes: numberAttributes
                 )
-            } else {
-                lineCell(text: "", lineNumber: nil, tone: .absent, highlights: [])
-            }
-        case .insert(let newIndex):
-            if isOld {
-                lineCell(text: "", lineNumber: nil, tone: .absent, highlights: [])
-            } else {
-                lineCell(
-                    text: document.newLines[newIndex],
-                    lineNumber: newIndex + 1,
-                    tone: .added,
-                    highlights: []
-                )
-            }
-        case .modified(let oldIndex, let newIndex):
-            let inline = inlineCache.ranges(
-                row: index,
-                oldLine: document.oldLines[oldIndex],
-                newLine: document.newLines[newIndex],
-                limits: limits
-            )
-            lineCell(
-                text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
-                lineNumber: (isOld ? oldIndex : newIndex) + 1,
-                tone: isOld ? .removed : .added,
-                highlights: isOld ? inline.oldRanges : inline.newRanges
-            )
-        case .collapsed:
-            EmptyView()
-        }
-    }
-
-    // MARK: - 单元格
-
-    private enum Tone {
-        case unchanged
-        case added
-        case removed
-        /// 对侧不存在的占位行
-        case absent
-
-        var background: Color {
-            switch self {
-            case .unchanged, .absent: .clear
-            case .added: Color.green.opacity(0.14)
-            case .removed: Color.red.opacity(0.14)
-            }
-        }
-
-        var edge: Color? {
-            switch self {
-            case .unchanged, .absent: nil
-            case .added: Color.green.opacity(0.8)
-            case .removed: Color.red.opacity(0.8)
-            }
-        }
-
-        var highlight: Color {
-            switch self {
-            case .added: Color.green.opacity(0.32)
-            case .removed: Color.red.opacity(0.32)
-            case .unchanged, .absent: .clear
             }
         }
     }
 
-    private func lineCell(
-        text: String,
-        lineNumber: Int?,
-        tone: Tone,
-        highlights: [Range<Int>]
-    ) -> some View {
-        HStack(spacing: 0) {
-            Text(lineNumber.map(String.init) ?? "")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .frame(width: gutterWidth - 8, alignment: .trailing)
-                .padding(.trailing, 8)
-            Group {
-                if highlights.isEmpty {
-                    Text(text.isEmpty ? " " : text)
-                        .foregroundStyle(.primary)
-                } else {
-                    Text(attributed(text, highlights: highlights, tone: tone))
-                }
-            }
-            .font(.system(size: 12, design: .monospaced))
-            .lineLimit(1)
-            .padding(.trailing, 12)
-            Spacer(minLength: 0)
+    /// 行号列里点击折叠条同样可以展开/收起，与内容区行为一致。
+    override func mouseDown(with event: NSEvent) {
+        guard let textView else {
+            super.mouseDown(with: event)
+            return
         }
-        .frame(height: rowHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tone.background)
-        .overlay(alignment: .leading) {
-            if let edge = tone.edge {
-                Rectangle().fill(edge).frame(width: 2)
-            }
+        let point = textView.convert(event.locationInWindow, from: nil)
+        if let row = textView.row(at: point),
+           let collapse = textView.rowData[row].collapse
+        {
+            textView.onToggleCollapse?(collapse.index)
+            return
         }
-    }
-
-    /// 按字符区间切片拼接。旧实现对每个区间做两次 `index(offsetBy:)`，
-    /// 那是 O(行长) 的定位；这里整行只走一遍。
-    private func attributed(
-        _ text: String,
-        highlights: [Range<Int>],
-        tone: Tone
-    ) -> AttributedString {
-        let chars = Array(text)
-        var result = AttributedString()
-        var cursor = 0
-        for range in highlights {
-            let lower = min(max(range.lowerBound, cursor), chars.count)
-            let upper = min(max(range.upperBound, lower), chars.count)
-            if cursor < lower {
-                result += AttributedString(String(chars[cursor ..< lower]))
-            }
-            if lower < upper {
-                var piece = AttributedString(String(chars[lower ..< upper]))
-                piece.backgroundColor = tone.highlight
-                result += piece
-            }
-            cursor = upper
-        }
-        if cursor < chars.count {
-            result += AttributedString(String(chars[cursor ..< chars.count]))
-        }
-        return result
+        super.mouseDown(with: event)
     }
 }
 
@@ -521,12 +1133,15 @@ struct DiffDocument: Sendable {
     var insertions: Int
     var deletions: Int
     var degraded: Bool
+    /// 行内 word 高亮（键 = `rows` 下标，仅 modified 行有值）。
+    /// 随 diff 一并在后台算好；被取消时可能不完整，缺失按无高亮处理。
+    var inline: [Int: DiffEngine.InlineRanges] = [:]
 
     var isIdentical: Bool {
         insertions == 0 && deletions == 0
     }
 
-    /// 规范化 + 切行 + diff，整套都可在后台线程执行。
+    /// 规范化 + 切行 + diff + 行内高亮，整套都可在后台线程执行。
     static func prepare(
         rawInput: String,
         formattedOutput: String,
@@ -537,7 +1152,7 @@ struct DiffDocument: Sendable {
         // 左侧：按当前缩进重排，但保留原始 key 顺序。
         // 解析失败时退回原文（调用方已保证输入合法，这里只是防御）。
         let normalized: String
-        if let value = try? JSONParser.parseThrowing(rawInput) {
+        if let value = try? JSONParser.parse(rawInput) {
             normalized = JSONSerializer.serialize(value, indent: indent, sortKeys: false)
         } else {
             normalized = rawInput
@@ -563,13 +1178,30 @@ struct DiffDocument: Sendable {
             collapseContext: 3,
             isCancelled: isCancelled
         )
+
+        // 行内高亮也在这里算掉：modified 行数天然有限（都是真实差异），
+        // 且 inlineDiff 自带词元预算，单行代价有界。
+        var inline: [Int: DiffEngine.InlineRanges] = [:]
+        for (index, row) in result.rows.enumerated() {
+            guard case .modified(let oldIndex, let newIndex) = row.kind else { continue }
+            if isCancelled() {
+                break
+            }
+            inline[index] = DiffEngine.inlineDiff(
+                oldLine: oldLines[oldIndex],
+                newLine: newLines[newIndex],
+                limits: limits
+            )
+        }
+
         return DiffDocument(
             oldLines: oldLines,
             newLines: newLines,
             rows: result.rows,
             insertions: result.insertions,
             deletions: result.deletions,
-            degraded: result.degraded
+            degraded: result.degraded,
+            inline: inline
         )
     }
 
@@ -586,37 +1218,6 @@ struct DiffDocument: Sendable {
             lines.removeLast()
         }
         return lines
-    }
-}
-
-/// 行内高亮缓存。
-///
-/// 刻意用普通 class（非 `@Observable`）：在 `body` 里按需填充不会触发
-/// SwiftUI 失效，只是纯记忆化。滚动时同一行反复渲染不必重算。
-@MainActor
-final class InlineCache {
-    private var storage: [Int: DiffEngine.InlineRanges] = [:]
-
-    func reset() {
-        storage.removeAll(keepingCapacity: true)
-    }
-
-    func ranges(
-        row: Int,
-        oldLine: String,
-        newLine: String,
-        limits: DiffEngine.Limits
-    ) -> DiffEngine.InlineRanges {
-        if let cached = storage[row] {
-            return cached
-        }
-        let computed = DiffEngine.inlineDiff(
-            oldLine: oldLine,
-            newLine: newLine,
-            limits: limits
-        )
-        storage[row] = computed
-        return computed
     }
 }
 

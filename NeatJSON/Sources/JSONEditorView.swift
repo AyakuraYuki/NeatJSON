@@ -29,10 +29,6 @@ struct JSONEditorView: NSViewRepresentable {
 
     @AppStorage("editorFontSize") private var storedFontSize: Double = 13
 
-    static var font: NSFont {
-        NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-    }
-
     var editorFont: NSFont {
         NSFont.monospacedSystemFont(ofSize: storedFontSize, weight: .regular)
     }

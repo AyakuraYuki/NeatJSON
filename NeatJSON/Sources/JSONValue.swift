@@ -1,5 +1,3 @@
-import Foundation
-
 /// JSON 值模型。
 ///
 /// `number` 保存原始字面量（lexeme）而非 `Double`：`1.0` 不被折成 `1`、
