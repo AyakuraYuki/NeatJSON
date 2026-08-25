@@ -124,24 +124,13 @@ struct MainEditorView: View {
         case .input:
             JSONEditorView(
                 role: .input,
-                text: Binding(
-                    get: { model.inputText },
-                    set: { model.inputText = $0 }
-                ),
-                onTextChange: { newValue in
-                    model.inputText = newValue
-                }
+                text: model.inputText,
+                onTextChange: { model.inputText = $0 }
             )
             .id("input-editor")
         case .output:
-            JSONEditorView(
-                role: .output,
-                text: Binding(
-                    get: { model.outputText },
-                    set: { _ in }
-                )
-            )
-            .id("output-editor")
+            JSONEditorView(role: .output, text: model.outputText)
+                .id("output-editor")
         }
     }
 

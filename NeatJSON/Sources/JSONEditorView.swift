@@ -22,9 +22,11 @@ struct JSONEditorView: NSViewRepresentable {
     }
 
     let role: Role
-    /// 输入区：当前文本（仅当外部值 ≠ 内部值时才 setString，防光标跳动）。
-    /// 输出区：要展示的文本。
-    @Binding var text: String
+    /// 要展示的文本（数据只从上往下流）。
+    /// 输入区：仅当外部值 ≠ 内部值时才 setString，防光标跳动；用户键入
+    /// 一律经 `onTextChange` 上报，本视图不通过绑定写回。
+    /// 输出区：格式化结果。
+    let text: String
     var onTextChange: ((String) -> Void)? = nil
 
     @AppStorage(PreferenceKey.editorFontSize) private var storedFontSize: Double = 13
