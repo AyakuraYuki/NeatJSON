@@ -3,22 +3,37 @@
 "pane.input.placeholder" = "Type or paste JSON…";
 "pane.output.placeholder" = "Formatted result";
 
-"action.clear" = "Clear";
+"action.clear.label" = "Clear";
 "action.clear.help" = "Clear input";
-"action.copy" = "Copy";
+"action.copy.label" = "Copy Result";
 "action.copy.help" = "Copy formatted result";
-"action.diff" = "Compare";
+"action.diff.label" = "Compare";
 "action.diff.help" = "Compare input and output";
-"action.close" = "Close";
+
+"menu.file.open" = "Open JSON File…";
+"menu.file.export" = "Export Formatted JSON…";
+"menu.edit.copy-formatted" = "Copy Formatted Result";
+"menu.edit.clear" = "Clear Input";
+"menu.view.compare" = "Compare Input & Output";
+"menu.view.text-bigger" = "Increase Text Size";
+"menu.view.text-smaller" = "Decrease Text Size";
+"menu.view.text-default" = "Default Text Size";
+
+"export.default-filename" = "Formatted";
+"import.failed" = "Could not read the file.";
 
 "picker.indent" = "Indent";
 
 "status.waiting" = "Waiting for input";
 "status.formatted" = "Formatted & sorted";
+"status.error.jump.help" = "Jump to error location";
 "status.input.stats" = "%lld chars · %lld lines";
 "status.output.stats" = "%lld lines";
 
+"diff.window.title" = "Differences";
 "diff.title" = "Differences";
+"diff.empty" = "Nothing to compare yet";
+"diff.empty.hint" = "Enter valid JSON in the main window, then press ⌘D.";
 "diff.left.title" = "Input (normalized)";
 "diff.right.title" = "Output (keys sorted)";
 "diff.note.normalized" = "Input is reformatted with the current indentation; the diff shows key order and content changes only.";
@@ -31,24 +46,11 @@
 "diff.exact" = "Exact compare";
 "diff.exact.help" = "Recompute without simplification. May take a while; closing this window cancels it.";
 
-"settings.tab.general" = "General";
-"settings.tab.shortcuts" = "Shortcuts";
 "settings.appearance.title" = "Appearance";
 "settings.appearance.system" = "System";
 "settings.appearance.light" = "Light";
 "settings.appearance.dark" = "Dark";
-"settings.shortcuts.section.toolbar" = "Toolbar";
-"settings.shortcuts.section.editing" = "Standard Editing";
-
-"shortcut.edit.find" = "Find";
-"shortcut.edit.find-next" = "Find Next";
-"shortcut.edit.find-previous" = "Find Previous";
-"shortcut.edit.undo" = "Undo";
-"shortcut.edit.redo" = "Redo";
-"shortcut.edit.cut" = "Cut";
-"shortcut.edit.copy" = "Copy";
-"shortcut.edit.paste" = "Paste";
-"shortcut.edit.select-all" = "Select All";
+"settings.font-size.title" = "Editor text size: %lld pt";
 
 "error.at-position" = "Line %lld, Column %lld: %@";
 "error.at-line" = "Line %lld: %@";

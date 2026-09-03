@@ -68,7 +68,24 @@ struct StatusBarView: View {
 
     /// 三种状态只差底色、图标、图标颜色、文字四个点，先在 switch 里
     /// 取齐这四项，徽章结构与玻璃特效样板只写一遍。
+    /// 错误且带位置信息时整个徽章是一个按钮：点击把输入区光标带到出错处
+    /// （反馈靠近操作点，错误描述里的行列号因此可以直接「走过去」）。
+    @ViewBuilder
     private var statusBadge: some View {
+        if case .error = badgeState, model.canJumpToError {
+            Button {
+                model.requestErrorJump()
+            } label: {
+                badgeBody
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "status.error.jump.help", defaultValue: "Jump to error location"))
+        } else {
+            badgeBody
+        }
+    }
+
+    private var badgeBody: some View {
         let state = badgeState
         let tint: Color?
         let icon: String
@@ -107,26 +124,28 @@ struct StatusBarView: View {
     }
 
     private var inputStats: some View {
-        Text(
+        statText(
             String(
                 localized: "status.input.stats",
                 defaultValue: "\(model.inputCharacterCount) chars · \(model.inputLineCount) lines"
             )
         )
-        .font(.system(size: 10, design: .monospaced))
-        .foregroundStyle(.tertiary)
-        .contentTransition(.numericText())
     }
 
     private var outputStats: some View {
-        Text(
+        statText(
             String(
                 localized: "status.output.stats",
                 defaultValue: "\(model.outputLineCount) lines"
             )
         )
-        .font(.system(size: 10, design: .monospaced))
-        .foregroundStyle(.tertiary)
-        .contentTransition(.numericText())
+    }
+
+    /// 两侧统计文本的公共样式。
+    private func statText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .contentTransition(.numericText())
     }
 }

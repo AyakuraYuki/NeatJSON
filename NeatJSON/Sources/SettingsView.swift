@@ -1,31 +1,16 @@
 import SwiftUI
 
-/// 设置面板：外观切换 + 快捷键一览。由 `Settings { }` Scene 承载，
+/// 设置面板：外观切换 + 编辑器字号。由 `Settings { }` Scene 承载，
 /// 系统自动提供菜单入口与 `⌘,` 快捷键。
+///
+/// 此前这里还有一页手写的「快捷键一览」—— 那是快捷键没有进菜单栏时
+/// 的补偿品。现在所有动作与快捷键都由菜单栏正式承载（见
+/// NeatJSONApp.AppCommands），菜单本身就是发现渠道，该页随之移除。
 struct SettingsView: View {
     @AppStorage(PreferenceKey.appearanceMode) private var appearanceMode: AppearanceMode = .system
+    @AppStorage(PreferenceKey.editorFontSize) private var editorFontSize: Double = EditorFontMetrics.standard
 
     var body: some View {
-        TabView {
-            generalTab.tabItem {
-                Label(
-                    String(localized: "settings.tab.general", defaultValue: "General"),
-                    systemImage: "gearshape"
-                )
-            }
-            shortcutsTab.tabItem {
-                Label(
-                    String(localized: "settings.tab.shortcuts", defaultValue: "Shortcuts"),
-                    systemImage: "keyboard"
-                )
-            }
-        }
-        .frame(width: 460, height: 360)
-    }
-
-    // MARK: - General
-
-    private var generalTab: some View {
         Form {
             Picker(
                 String(localized: "settings.appearance.title", defaultValue: "Appearance"),
@@ -36,63 +21,19 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
+
+            Stepper(
+                String(
+                    localized: "settings.font-size.title",
+                    defaultValue: "Editor text size: \(Int(editorFontSize)) pt"
+                ),
+                value: $editorFontSize,
+                in: EditorFontMetrics.minimum ... EditorFontMetrics.maximum,
+                step: 1
+            )
         }
         .font(.system(size: 14))
         .padding(24)
-    }
-
-    // MARK: - Shortcuts
-
-    private var shortcutsTab: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                shortcutSection(
-                    title: String(localized: "settings.shortcuts.section.toolbar", defaultValue: "Toolbar"),
-                    rows: [
-                        (String(localized: "action.clear", defaultValue: "Clear"), "⌘K"),
-                        (String(localized: "action.copy", defaultValue: "Copy"), "⌘⇧C"),
-                        (String(localized: "action.diff", defaultValue: "Compare"), "⌘D"),
-                    ]
-                )
-                shortcutSection(
-                    title: String(localized: "settings.shortcuts.section.editing", defaultValue: "Standard Editing"),
-                    rows: [
-                        (String(localized: "shortcut.edit.find", defaultValue: "Find"), "⌘F"),
-                        (String(localized: "shortcut.edit.find-next", defaultValue: "Find Next"), "⌘G"),
-                        (String(localized: "shortcut.edit.find-previous", defaultValue: "Find Previous"), "⌘⇧G"),
-                        (String(localized: "shortcut.edit.undo", defaultValue: "Undo"), "⌘Z"),
-                        (String(localized: "shortcut.edit.redo", defaultValue: "Redo"), "⌘⇧Z"),
-                        (String(localized: "shortcut.edit.cut", defaultValue: "Cut"), "⌘X"),
-                        (String(localized: "shortcut.edit.copy", defaultValue: "Copy"), "⌘C"),
-                        (String(localized: "shortcut.edit.paste", defaultValue: "Paste"), "⌘V"),
-                        (String(localized: "shortcut.edit.select-all", defaultValue: "Select All"), "⌘A"),
-                    ]
-                )
-            }
-            .padding(24)
-        }
-    }
-
-    private func shortcutSection(title: String, rows: [(label: String, keys: String)]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
-            VStack(spacing: 4) {
-                ForEach(rows, id: \.label) { row in
-                    shortcutRow(label: row.label, keys: row.keys)
-                }
-            }
-        }
-    }
-
-    private func shortcutRow(label: String, keys: String) -> some View {
-        HStack(spacing: 12) {
-            Text(label).font(.system(size: 13))
-            Spacer()
-            Text(keys)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-        }
+        .frame(width: 460)
     }
 }

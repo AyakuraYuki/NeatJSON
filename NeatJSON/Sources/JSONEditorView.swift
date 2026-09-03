@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// NSTextView 包装。
 ///
@@ -28,6 +29,8 @@ struct JSONEditorView: NSViewRepresentable {
     /// 输出区：格式化结果。
     let text: String
     var onTextChange: ((String) -> Void)? = nil
+    /// 「跳到错误位置」请求（仅输入区传入）。revision 变化时执行一次。
+    var errorJump: AppModel.ErrorJump? = nil
 
     @AppStorage(PreferenceKey.editorFontSize) private var storedFontSize: Double = 13
 
@@ -127,6 +130,11 @@ struct JSONEditorView: NSViewRepresentable {
             // （状态栏计数等）不再触发全量重着色。
             // 外观切换由 JSONTextView.viewDidChangeEffectiveAppearance 负责。
             coordinator.refreshAll()
+        }
+
+        if let errorJump, errorJump.revision != coordinator.handledJumpRevision {
+            coordinator.handledJumpRevision = errorJump.revision
+            coordinator.jump(toLine: errorJump.line, column: errorJump.column)
         }
     }
 
@@ -244,10 +252,26 @@ struct JSONEditorView: NSViewRepresentable {
         }
 
         /// 外部整体替换文本，随后整体重着色。
+        ///
+        /// 可编辑的输入区走 `shouldChangeText → replaceCharacters →
+        /// didChangeText` 的正规编辑管线：undo manager 由此记录这次替换，
+        /// Clear（⌘K）、打开文件这类破坏性覆盖才能被 ⌘Z 撤销。
+        /// `isReplacing` 同时挡掉这条路径触发的 `textDidChange` 回调 ——
+        /// 模型本来就是这次替换的发起方，不需要再上报一轮。
         func replaceText(_ newText: String) {
             guard let textView else { return }
             isReplacing = true
-            textView.string = newText
+            if textView.isEditable, let storage = textView.textStorage {
+                let fullRange = NSRange(location: 0, length: storage.length)
+                if textView.shouldChangeText(in: fullRange, replacementString: newText) {
+                    storage.replaceCharacters(in: fullRange, with: newText)
+                    textView.didChangeText()
+                } else {
+                    textView.string = newText
+                }
+            } else {
+                textView.string = newText
+            }
             isReplacing = false
             appliedText = newText
             pendingRange = nil
@@ -262,6 +286,53 @@ struct JSONEditorView: NSViewRepresentable {
         /// 外观（深浅色）变化后重解析配色并全量重着色。
         func appearanceDidChange() {
             refreshAll()
+        }
+
+        // MARK: 错误位置跳转
+
+        /// 已处理过的跳转请求代次（防止同一请求在后续更新中重复执行）。
+        var handledJumpRevision = 0
+
+        /// 光标移到 `line` 行 `column` 列并滚动到可见，同时让编辑器获得焦点。
+        ///
+        /// 解析器的列号按字符计，这里按 UTF-16 索引近似换算即可 ——
+        /// 目标只是把视线带到出错处，一两个码元的偏差无关紧要；
+        /// 位置一律夹在行内，行列过期（文本已改）也不会越界。
+        func jump(toLine line: Int, column: Int?) {
+            guard let textView, let storage = textView.textStorage else { return }
+            let text = storage.mutableString
+            let length = text.length
+
+            var lineStart = 0
+            var currentLine = 1
+            while currentLine < line, lineStart < length {
+                let newline = text.range(
+                    of: "\n",
+                    range: NSRange(location: lineStart, length: length - lineStart)
+                )
+                guard newline.location != NSNotFound else { break }
+                lineStart = NSMaxRange(newline)
+                currentLine += 1
+            }
+
+            var lineEnd = length
+            if lineStart < length {
+                let newline = text.range(
+                    of: "\n",
+                    range: NSRange(location: lineStart, length: length - lineStart)
+                )
+                if newline.location != NSNotFound {
+                    lineEnd = newline.location
+                }
+            }
+
+            let target = NSRange(
+                location: min(lineStart + max(0, (column ?? 1) - 1), lineEnd),
+                length: 0
+            )
+            textView.setSelectedRange(target)
+            textView.scrollRangeToVisible(target)
+            textView.window?.makeFirstResponder(textView)
         }
 
         // MARK: NSTextStorageDelegate —— 增量着色
@@ -366,7 +437,9 @@ struct JSONEditorView: NSViewRepresentable {
         // MARK: NSTextViewDelegate
 
         func textDidChange(_ notification: Notification) {
-            guard let textView else { return }
+            // isReplacing = 程序化整体替换（模型是发起方，值已一致），
+            // 只有用户编辑才需要上报。
+            guard let textView, !isReplacing else { return }
             // 关键：转成原生连续存储再往上传。textView.string 是懒桥接的
             // NSString，之后每一次统计/解析/diff 都要过桥（实测 1.3 MB
             // 文档光数一遍换行就要 28 ms，原生只要 0.7 ms）。
@@ -445,5 +518,32 @@ final class JSONTextView: NSTextView {
         // 需要重新解析颜色并对全文重着色。
         resolveColors()
         highlightController?.appearanceDidChange()
+    }
+
+    /// 把 .json 文件拖进输入区 = 读入其内容整体替换。
+    ///
+    /// NSTextView 对文件 URL 的默认行为是把**路径字符串**插进正文，对
+    /// JSON 工具毫无用处。仅拦截 .json；其他拖放（普通文本等）走默认。
+    /// 替换经 `insertText(_:replacementRange:)` 编辑管线，可被 ⌘Z 撤销。
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        if isEditable, let content = Self.droppedJSONFileContent(from: sender.draggingPasteboard) {
+            let fullRange = NSRange(location: 0, length: textStorage?.length ?? 0)
+            insertText(content, replacementRange: fullRange)
+            return true
+        }
+        return super.performDragOperation(sender)
+    }
+
+    private static func droppedJSONFileContent(from pasteboard: NSPasteboard) -> String? {
+        guard
+            let urls = pasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL],
+            let url = urls.first,
+            let type = UTType(filenameExtension: url.pathExtension),
+            type.conforms(to: .json)
+        else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
     }
 }

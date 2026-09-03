@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -29,10 +30,24 @@ final class AppModel {
         didSet { reformat() }
     }
 
-    /// diff sheet 是否弹出。
-    var diffPresented: Bool = false
+    /// diff 快照的代次。0 = 尚未生成过快照（diff 窗口显示空态）；
+    /// 每次 `presentDiff()` 递增，diff 窗口以它为身份重建内容。
+    private(set) var diffRevision = 0
 
-    /// diff 内容在弹出时快照，避免编辑期间 sheet 内数据变动。
+    /// 文件导入/导出面板的呈现状态（由菜单命令置位，面板挂在主窗口上）。
+    var importerPresented = false
+    var exporterPresented = false
+
+    /// 「跳到错误位置」请求。revision 递增一次，输入编辑器就响应一次。
+    struct ErrorJump: Equatable {
+        var line: Int
+        var column: Int?
+        var revision: Int
+    }
+
+    private(set) var errorJump: ErrorJump?
+
+    /// diff 内容在弹出时快照，避免编辑期间窗口内数据变动。
     ///
     /// 只存**原始输入**：左侧的规范化（按当前缩进重排、保留原始 key 顺序）
     /// 在 diff 的后台任务里做，不占用每次键入的开销。
@@ -151,11 +166,34 @@ final class AppModel {
         diffRawInput = inputText
         diffFormattedOutput = outputText
         diffIndent = indent
-        diffPresented = true
+        diffRevision += 1
     }
 
     func clearAll() {
         inputText = ""
+    }
+
+    /// 把格式化结果写入系统剪贴板。
+    func copyOutput() {
+        guard !outputText.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(outputText, forType: .string)
+    }
+
+    /// 当前错误是否带可跳转的位置信息。
+    var canJumpToError: Bool {
+        lastError?.line != nil
+    }
+
+    /// 请求把输入编辑器的光标移动到当前错误的位置。
+    func requestErrorJump() {
+        guard let error = lastError, let line = error.line else { return }
+        errorJump = ErrorJump(
+            line: line,
+            column: error.column,
+            revision: (errorJump?.revision ?? 0) + 1
+        )
     }
 
     // MARK: - 单遍扫描工具

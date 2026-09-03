@@ -2,6 +2,51 @@ import AppKit
 import SwiftUI
 import Synchronization
 
+/// diff 独立窗口的内容：读取 AppModel 里的快照。
+///
+/// 以 `diffRevision` 作为 `DiffView` 的身份：每次 ⌘D 都是新快照，
+/// 视图整体重建、内部 @State（折叠展开、精确重算开关）随之归零。
+/// 用户从 Window 菜单直接打开窗口而尚无快照时显示空态。
+struct DiffWindowView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.diffRevision > 0 {
+            DiffView(
+                rawInput: model.diffRawInput,
+                formattedOutput: model.diffFormattedOutput,
+                indent: model.diffIndent
+            )
+            .id(model.diffRevision)
+        } else {
+            VStack(spacing: 10) {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.tertiary)
+                Text(
+                    String(
+                        localized: "diff.empty",
+                        defaultValue: "Nothing to compare yet"
+                    )
+                )
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                Text(
+                    String(
+                        localized: "diff.empty.hint",
+                        defaultValue: "Enter valid JSON in the main window, then press ⌘D."
+                    )
+                )
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            }
+            .frame(minWidth: 820, minHeight: 520)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.thinMaterial)
+        }
+    }
+}
+
 /// JetBrains 风格 side-by-side diff 视图。
 ///
 /// 结构：SwiftUI 负责外壳（头部、统计胶囊、列标题、进度态），正文两栏
@@ -25,7 +70,7 @@ import Synchronization
 /// - 折叠/展开后的可渲染行统一物化成 `DiffRenderRow` 数组，左右两栏
 ///   从结构上保证行数一致、逐行对齐；
 /// - NSTextView 开启非连续布局，只排版可见区域；
-/// - 关闭 sheet 会真正取消后台计算。
+/// - 关闭窗口会真正取消后台计算。
 ///
 /// 语义要点：左侧是**按当前缩进重排、但保留原始 key 顺序**的输入，
 /// 右侧是排序后的输出。这样差异只反映键顺序与真实内容变化，
@@ -38,7 +83,6 @@ struct DiffView: View {
     /// 当前缩进风格，用于规范化左侧。
     let indent: IndentStyle
 
-    @Environment(\.dismiss) private var dismiss
     @Namespace private var headerGlassNamespace
 
     /// nil = 正在后台计算
@@ -142,9 +186,9 @@ struct DiffView: View {
             // 出现/消失时协调走形变过渡而不是突然蹦出来。spacing 用 8，
             // 和内部 HStack 的间距一致，避免静止时也非预期地粘在一起。
             //
-            // "Exact compare" 和 "Close" 留在容器外、维持原样：它们用的
-            // 是系统 .buttonStyle(.glass)，是系统自己管理优化过的原生
-            // 玻璃控件，不是需要容器帮忙合成/形变的手写玻璃形状。
+            // "Exact compare" 留在容器外、维持原样：它用的是系统
+            // .buttonStyle(.glass)，是系统自己管理优化过的原生玻璃控件，
+            // 不是需要容器帮忙合成/形变的手写玻璃形状。
             GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
                     if let document, document.degraded {
@@ -158,34 +202,32 @@ struct DiffView: View {
             if let document, document.degraded {
                 exactCompareButton
             }
-            Button {
-                dismiss()
-            } label: {
-                Label(
-                    String(localized: "action.close", defaultValue: "Close"),
-                    systemImage: "xmark"
-                )
-            }
-            .buttonStyle(.glass)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
+    /// 头部手写玻璃胶囊的公共样板：内边距 + 胶囊玻璃 + 形变过渡身份。
+    private func headerCapsule(id: String, @ViewBuilder content: () -> some View) -> some View {
+        content()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .glassEffect(.regular, in: .capsule)
+            .glassEffectID(id, in: headerGlassNamespace)
+            .glassEffectTransition(.matchedGeometry)
+    }
+
     /// 降级提示徽章（手写玻璃胶囊，进容器）。
     private var degradedBadge: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(.orange)
-            Text(String(localized: "diff.degraded", defaultValue: "Simplified"))
-                .font(.system(size: 11, weight: .medium))
+        headerCapsule(id: "degraded") {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                Text(String(localized: "diff.degraded", defaultValue: "Simplified"))
+                    .font(.system(size: 11, weight: .medium))
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .glassEffect(.regular, in: .capsule)
-        .glassEffectID("degraded", in: headerGlassNamespace)
-        .glassEffectTransition(.matchedGeometry)
     }
 
     /// 精确重算入口（系统玻璃按钮，容器外）。
@@ -206,19 +248,16 @@ struct DiffView: View {
 
     /// 插入/删除行数统计胶囊（手写玻璃胶囊，进容器）。
     private func statsCapsule(_ document: DiffDocument) -> some View {
-        HStack(spacing: 8) {
-            Label("\(document.insertions)", systemImage: "plus")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.green)
-            Label("\(document.deletions)", systemImage: "minus")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.red)
+        headerCapsule(id: "stats") {
+            HStack(spacing: 8) {
+                Label("\(document.insertions)", systemImage: "plus")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.green)
+                Label("\(document.deletions)", systemImage: "minus")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.red)
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .glassEffect(.regular, in: .capsule)
-        .glassEffectID("stats", in: headerGlassNamespace)
-        .glassEffectTransition(.matchedGeometry)
     }
 
     private var columnTitles: some View {
@@ -237,7 +276,7 @@ struct DiffView: View {
         Text(text)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.secondary)
-            .padding(.leading, 52)
+            .padding(.leading, DiffPaneMetrics.gutterWidth)
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -305,21 +344,13 @@ struct DiffView: View {
 
 /// 展开折叠块后的扁平行描述。左右两栏共用同一份数组生成渲染行，
 /// 从结构上保证下标永远对齐。
-enum FlatRow: Identifiable {
+enum FlatRow {
     /// 非折叠行，对应 `document.rows[index]`。
     case row(Int)
     /// 折叠提示条本身（「N 处未更改」）。
     case collapsedHeader(Int)
     /// 折叠块展开后的一行未变更配对。
     case collapsedPair(headerIndex: Int, oldIndex: Int, newIndex: Int)
-
-    var id: String {
-        switch self {
-        case .row(let i): "r\(i)"
-        case .collapsedHeader(let i): "h\(i)"
-        case .collapsedPair(let h, let o, _): "p\(h)_\(o)"
-        }
-    }
 }
 
 /// 把 `document.rows` 按 `expanded` 展开成的扁平行列表。
@@ -405,6 +436,15 @@ func renderRows(
     expanded: Set<Int>,
     isOld: Bool
 ) -> [DiffRenderRow] {
+    /// 左右配对的未变更行（.equal 与展开后的折叠行共用）。
+    func unchangedRow(oldIndex: Int, newIndex: Int) -> DiffRenderRow {
+        DiffRenderRow(
+            text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
+            lineNumber: (isOld ? oldIndex : newIndex) + 1,
+            tone: .unchanged
+        )
+    }
+
     var result: [DiffRenderRow] = []
     result.reserveCapacity(flatRows.count)
     for flat in flatRows {
@@ -425,23 +465,11 @@ func renderRows(
                 )
             )
         case .collapsedPair(_, let oldIndex, let newIndex):
-            result.append(
-                DiffRenderRow(
-                    text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
-                    lineNumber: (isOld ? oldIndex : newIndex) + 1,
-                    tone: .unchanged
-                )
-            )
+            result.append(unchangedRow(oldIndex: oldIndex, newIndex: newIndex))
         case .row(let index):
             switch document.rows[index].kind {
             case .equal(let oldIndex, let newIndex):
-                result.append(
-                    DiffRenderRow(
-                        text: isOld ? document.oldLines[oldIndex] : document.newLines[newIndex],
-                        lineNumber: (isOld ? oldIndex : newIndex) + 1,
-                        tone: .unchanged
-                    )
-                )
+                result.append(unchangedRow(oldIndex: oldIndex, newIndex: newIndex))
             case .delete(let oldIndex):
                 if isOld {
                     result.append(
@@ -979,10 +1007,17 @@ final class DiffPaneTextView: NSTextView {
 
     // MARK: 交互
 
+    /// 窗口坐标点若落在折叠条上则触发展开/收起。
+    /// 内容区与行号列的 mouseDown 共用这一处命中逻辑。
+    func handleCollapseClick(windowPoint: NSPoint) -> Bool {
+        let point = convert(windowPoint, from: nil)
+        guard let row = row(at: point), let collapse = rowData[row].collapse else { return false }
+        onToggleCollapse?(collapse.index)
+        return true
+    }
+
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        if let row = row(at: point), let collapse = rowData[row].collapse {
-            onToggleCollapse?(collapse.index)
+        if handleCollapseClick(windowPoint: event.locationInWindow) {
             return
         }
         super.mouseDown(with: event)
@@ -1076,15 +1111,7 @@ final class DiffGutterView: NSView {
 
     /// 行号列里点击折叠条同样可以展开/收起，与内容区行为一致。
     override func mouseDown(with event: NSEvent) {
-        guard let textView else {
-            super.mouseDown(with: event)
-            return
-        }
-        let point = textView.convert(event.locationInWindow, from: nil)
-        if let row = textView.row(at: point),
-           let collapse = textView.rowData[row].collapse
-        {
-            textView.onToggleCollapse?(collapse.index)
+        if textView?.handleCollapseClick(windowPoint: event.locationInWindow) == true {
             return
         }
         super.mouseDown(with: event)

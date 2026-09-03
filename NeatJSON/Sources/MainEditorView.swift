@@ -1,14 +1,22 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 主界面：左右两块玻璃卡片编辑器 + 玻璃工具栏 + 底部状态栏。
 ///
 /// 卡片等宽、固定 1:1，无分隔条与拖拽。卡片以 regularMaterial 浮在
 /// thinMaterial 窗口底色上；文本视图本体不画背景（见 JSONTextView），
 /// 让材质透出来。
+///
+/// 工具栏按钮只是快捷入口：动作与快捷键的正式归属在菜单栏
+/// （见 NeatJSONApp.AppCommands），这里不再重复挂 keyboardShortcut。
 struct MainEditorView: View {
     @Environment(AppModel.self) private var model
-    @AppStorage(PreferenceKey.editorFontSize) private var editorFontSize: Double = 13
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage(PreferenceKey.editorFontSize) private var editorFontSize: Double = EditorFontMetrics.standard
+
+    /// 文件导入读取失败时的提示。
+    @State private var importFailed = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -22,35 +30,46 @@ struct MainEditorView: View {
             StatusBarView()
         }
         .toolbar {
-            ToolbarSpacer(.fixed, placement: .navigation)
+            ToolbarSpacer(.flexible, placement: .navigation)
 
             ToolbarItemGroup(placement: .automatic) {
                 Button {
-                    model.clearAll()
+                    model.copyOutput()
                 } label: {
-                    Image(systemName: "trash")
+                    // Label 而非裸 Image：VoiceOver、「图标+文字」显示
+                    // 模式与溢出菜单都要靠它拿到文字。
+                    Label(
+                        String(localized: "action.copy.label", defaultValue: "Copy Result"),
+                        systemImage: "doc.on.doc"
+                    )
                 }
-                .keyboardShortcut("k", modifiers: .command)
-                .help(String(localized: "action.clear.help", defaultValue: "Clear input"))
-
-                Button {
-                    copyOutput()
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
                 .help(String(localized: "action.copy.help", defaultValue: "Copy formatted result"))
                 .disabled(model.outputText.isEmpty)
 
                 Button {
-                    model.presentDiff()
+                    presentDiffWindow()
                 } label: {
-                    Image(systemName: "arrow.left.arrow.right")
+                    Label(
+                        String(localized: "action.diff.label", defaultValue: "Compare"),
+                        systemImage: "arrow.left.arrow.right"
+                    )
                 }
-                .keyboardShortcut("d", modifiers: .command)
                 .help(String(localized: "action.diff.help", defaultValue: "Compare input and output"))
                 .disabled(!model.canShowDiff)
+
+                Button {
+                    model.clearAll()
+                } label: {
+                    Label(
+                        String(localized: "action.clear.label", defaultValue: "Clear"),
+                        systemImage: "trash"
+                    )
+                }
+                .help(String(localized: "action.clear.help", defaultValue: "Clear input"))
+                .disabled(model.inputText.isEmpty)
             }
+
+            ToolbarSpacer(.flexible, placement: .navigation)
 
             ToolbarItem(placement: .primaryAction) {
                 Picker(
@@ -69,14 +88,24 @@ struct MainEditorView: View {
             }
         }
         .navigationTitle("NeatJSON")
-        .sheet(isPresented: Bindable(model).diffPresented) {
-            DiffView(
-                rawInput: model.diffRawInput,
-                formattedOutput: model.diffFormattedOutput,
-                indent: model.diffIndent
-            )
-            .presentationSizing(.fitted)
+        .fileImporter(
+            isPresented: Bindable(model).importerPresented,
+            allowedContentTypes: [.json, .plainText]
+        ) { result in
+            handleImport(result)
         }
+        .fileExporter(
+            isPresented: Bindable(model).exporterPresented,
+            document: JSONExportDocument(text: model.outputText),
+            contentType: .json,
+            defaultFilename: String(
+                localized: "export.default-filename", defaultValue: "Formatted"
+            )
+        ) { _ in }
+        .alert(
+            String(localized: "import.failed", defaultValue: "Could not read the file."),
+            isPresented: $importFailed
+        ) {}
     }
 
     // MARK: - 编辑卡片
@@ -124,7 +153,8 @@ struct MainEditorView: View {
             JSONEditorView(
                 role: .input,
                 text: model.inputText,
-                onTextChange: { model.inputText = $0 }
+                onTextChange: { model.inputText = $0 },
+                errorJump: model.errorJump
             )
             .id("input-editor")
         case .output:
@@ -133,11 +163,45 @@ struct MainEditorView: View {
         }
     }
 
-    // MARK: - 缩进选择
+    // MARK: - 动作
 
-    private func copyOutput() {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(model.outputText, forType: .string)
+    private func presentDiffWindow() {
+        model.presentDiff()
+        openWindow(id: "diff")
+    }
+
+    private func handleImport(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing { url.stopAccessingSecurityScopedResource() }
+        }
+        if let text = try? String(contentsOf: url, encoding: .utf8) {
+            model.inputText = text
+        } else {
+            importFailed = true
+        }
+    }
+}
+
+/// `fileExporter` 需要的最小 FileDocument 包装：导出格式化结果。
+struct JSONExportDocument: FileDocument {
+    static let readableContentTypes: [UTType] = [.json]
+
+    var text: String
+
+    init(text: String) {
+        self.text = text
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        text = String(decoding: data, as: UTF8.self)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
     }
 }
