@@ -23,53 +23,49 @@ struct MainEditorView: View {
         }
         .toolbar {
             ToolbarSpacer(.fixed, placement: .navigation)
-            ToolbarItem(placement: .primaryAction) {
+
+            ToolbarItemGroup(placement: .automatic) {
                 Button {
                     model.clearAll()
                 } label: {
-                    Label(
-                        String(localized: "action.clear", defaultValue: "Clear"),
-                        systemImage: "trash"
-                    )
+                    Image(systemName: "trash")
                 }
-                .buttonStyle(.glass)
-                .pressFeedback()
                 .keyboardShortcut("k", modifiers: .command)
                 .help(String(localized: "action.clear.help", defaultValue: "Clear input"))
-                .disabled(model.inputText.isEmpty)
-            }
-            ToolbarItem(placement: .primaryAction) {
+
                 Button {
                     copyOutput()
                 } label: {
-                    Label(
-                        String(localized: "action.copy", defaultValue: "Copy"),
-                        systemImage: "doc.on.doc"
-                    )
+                    Image(systemName: "doc.on.doc")
                 }
-                .buttonStyle(.glass)
-                .pressFeedback()
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .help(String(localized: "action.copy.help", defaultValue: "Copy formatted result"))
                 .disabled(model.outputText.isEmpty)
-            }
-            ToolbarItem(placement: .primaryAction) {
+
                 Button {
                     model.presentDiff()
                 } label: {
-                    Label(
-                        String(localized: "action.diff", defaultValue: "Compare"),
-                        systemImage: "arrow.left.arrow.right"
-                    )
+                    Image(systemName: "arrow.left.arrow.right")
                 }
-                .buttonStyle(.glassProminent)
-                .pressFeedback()
                 .keyboardShortcut("d", modifiers: .command)
                 .help(String(localized: "action.diff.help", defaultValue: "Compare input and output"))
                 .disabled(!model.canShowDiff)
             }
+
             ToolbarItem(placement: .primaryAction) {
-                indentPicker
+                Picker(
+                    String(localized: "picker.indent", defaultValue: "Indent"),
+                    selection: Bindable(model).indent
+                ) {
+                    ForEach(IndentStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 130)
+                // 不再额外套 .glassEffect()：分段 Picker 放进工具栏时本身已经是
+                // 系统原生渲染的 Liquid Glass 外观，再叠一层是重复的玻璃层，
+                // 属于 Apple 文档明确提醒过的「过多玻璃效果」反模式。
             }
         }
         .navigationTitle("NeatJSON")
@@ -139,50 +135,9 @@ struct MainEditorView: View {
 
     // MARK: - 缩进选择
 
-    private var indentPicker: some View {
-        Picker(
-            String(localized: "picker.indent", defaultValue: "Indent"),
-            selection: Bindable(model).indent
-        ) {
-            ForEach(IndentStyle.allCases) { style in
-                Text(style.label).tag(style)
-            }
-        }
-        .pickerStyle(.segmented)
-        .frame(width: 130)
-        // 不再额外套 .glassEffect()：分段 Picker 放进工具栏时本身已经是
-        // 系统原生渲染的 Liquid Glass 外观，再叠一层是重复的玻璃层，
-        // 属于 Apple 文档明确提醒过的「过多玻璃效果」反模式。
-    }
-
     private func copyOutput() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(model.outputText, forType: .string)
-    }
-}
-
-/// 工具栏按钮按下反馈：`.glass` / `.glassProminent` 按下时视觉变化很弱，
-/// 单靠系统样式很难判断是否点中，用这个修饰符叠加缩放 + 透明度动画。
-private struct ButtonPressFeedback: ViewModifier {
-    @State private var isPressed = false
-    @Environment(\.isEnabled) private var isEnabled
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(isPressed ? 0.94 : 1)
-            .opacity(isPressed ? 0.7 : 1)
-            .animation(.easeOut(duration: 0.12), value: isPressed)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in if isEnabled { isPressed = true } }
-                    .onEnded { _ in isPressed = false }
-            )
-    }
-}
-
-private extension View {
-    func pressFeedback() -> some View {
-        modifier(ButtonPressFeedback())
     }
 }
