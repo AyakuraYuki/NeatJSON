@@ -22,6 +22,18 @@
 "export.default-filename" = "Formatted";
 "import.failed" = "Could not read the file.";
 
+"menu.help" = "NeatJSON Help";
+"help.window.title" = "NeatJSON Help";
+"help.overview" = "Type or paste JSON on the left — it is formatted and key-sorted automatically. Pick the indent style in the toolbar; the result on the right is ready to copy.";
+"help.section.file" = "File";
+"help.section.edit" = "Edit";
+"help.section.view" = "View";
+"help.section.tips" = "Tips";
+"help.row.find" = "Find in Editor";
+"help.tip.drop" = "Drop a .json file onto the input pane to load its contents.";
+"help.tip.error-jump" = "When the input is invalid, click the error badge in the status bar to jump to the problem.";
+"help.tip.undo" = "Clear and file loading can be undone with ⌘Z.";
+
 "picker.indent" = "Indent";
 
 "status.waiting" = "Waiting for input";

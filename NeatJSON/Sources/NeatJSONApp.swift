@@ -43,6 +43,17 @@ struct NeatJSONApp: App {
         Settings {
             SettingsView()
         }
+
+        // 轻量应用内帮助（Help ▸ NeatJSON 帮助，⌘?）。
+        // 没有注册 Apple Help Book 时系统默认项会弹「未找到帮助」，
+        // 由 AppCommands 里的 CommandGroup(replacing: .help) 换成打开本窗口。
+        Window(
+            String(localized: "help.window.title", defaultValue: "NeatJSON Help"),
+            id: "help"
+        ) {
+            HelpView()
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -117,6 +128,14 @@ private struct AppCommands: Commands {
             .disabled(editorFontSize == EditorFontMetrics.standard)
 
             Divider()
+        }
+
+        // Help：默认项指向不存在的 Help Book，替换成应用内帮助窗口。
+        CommandGroup(replacing: .help) {
+            Button(String(localized: "menu.help", defaultValue: "NeatJSON Help")) {
+                openWindow(id: "help")
+            }
+            .keyboardShortcut("?", modifiers: .command)
         }
     }
 }
