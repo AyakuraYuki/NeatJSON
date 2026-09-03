@@ -33,6 +33,7 @@ struct MainEditorView: View {
                     )
                 }
                 .buttonStyle(.glass)
+                .pressFeedback()
                 .keyboardShortcut("k", modifiers: .command)
                 .help(String(localized: "action.clear.help", defaultValue: "Clear input"))
                 .disabled(model.inputText.isEmpty)
@@ -47,6 +48,7 @@ struct MainEditorView: View {
                     )
                 }
                 .buttonStyle(.glass)
+                .pressFeedback()
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .help(String(localized: "action.copy.help", defaultValue: "Copy formatted result"))
                 .disabled(model.outputText.isEmpty)
@@ -61,6 +63,7 @@ struct MainEditorView: View {
                     )
                 }
                 .buttonStyle(.glassProminent)
+                .pressFeedback()
                 .keyboardShortcut("d", modifiers: .command)
                 .help(String(localized: "action.diff.help", defaultValue: "Compare input and output"))
                 .disabled(!model.canShowDiff)
@@ -156,5 +159,30 @@ struct MainEditorView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(model.outputText, forType: .string)
+    }
+}
+
+/// 工具栏按钮按下反馈：`.glass` / `.glassProminent` 按下时视觉变化很弱，
+/// 单靠系统样式很难判断是否点中，用这个修饰符叠加缩放 + 透明度动画。
+private struct ButtonPressFeedback: ViewModifier {
+    @State private var isPressed = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isPressed ? 0.94 : 1)
+            .opacity(isPressed ? 0.7 : 1)
+            .animation(.easeOut(duration: 0.12), value: isPressed)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in if isEnabled { isPressed = true } }
+                    .onEnded { _ in isPressed = false }
+            )
+    }
+}
+
+private extension View {
+    func pressFeedback() -> some View {
+        modifier(ButtonPressFeedback())
     }
 }
