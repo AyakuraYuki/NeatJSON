@@ -25,53 +25,57 @@ struct MainEditorView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.thinMaterial)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            StatusBarView()
-        }
+        .background(
+            LinearGradient(
+                colors: [.gray.opacity(0.10), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .navigationTitle("NeatJSON")
         .toolbar {
-            ToolbarSpacer(.flexible, placement: .navigation)
+            ToolbarSpacer(.flexible)
 
-            ToolbarItemGroup(placement: .automatic) {
+            ToolbarItem {
                 Button {
                     model.copyOutput()
                 } label: {
-                    // Label 而非裸 Image：VoiceOver、「图标+文字」显示
-                    // 模式与溢出菜单都要靠它拿到文字。
-                    Label(
-                        String(localized: "action.copy.label", defaultValue: "Copy Result"),
-                        systemImage: "doc.on.doc"
-                    )
+                    Image(systemName: "doc.on.doc")
                 }
+                .buttonStyle(.glass)
                 .help(String(localized: "action.copy.help", defaultValue: "Copy formatted result"))
                 .disabled(model.outputText.isEmpty)
+            }
 
+            ToolbarSpacer(.fixed)
+
+            ToolbarItem {
                 Button {
                     presentDiffWindow()
                 } label: {
-                    Label(
-                        String(localized: "action.diff.label", defaultValue: "Compare"),
-                        systemImage: "arrow.left.arrow.right"
-                    )
+                    Image(systemName: "arrow.left.arrow.right")
                 }
+                .buttonStyle(.glass)
                 .help(String(localized: "action.diff.help", defaultValue: "Compare input and output"))
                 .disabled(!model.canShowDiff)
+            }
 
+            ToolbarSpacer(.fixed)
+
+            ToolbarItem {
                 Button {
                     model.clearAll()
                 } label: {
-                    Label(
-                        String(localized: "action.clear.label", defaultValue: "Clear"),
-                        systemImage: "trash"
-                    )
+                    Image(systemName: "trash")
                 }
+                .buttonStyle(.glass)
                 .help(String(localized: "action.clear.help", defaultValue: "Clear input"))
                 .disabled(model.inputText.isEmpty)
             }
 
-            ToolbarSpacer(.flexible, placement: .navigation)
+            ToolbarSpacer(.flexible)
 
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem {
                 Picker(
                     String(localized: "picker.indent", defaultValue: "Indent"),
                     selection: Bindable(model).indent
@@ -87,7 +91,7 @@ struct MainEditorView: View {
                 // 属于 Apple 文档明确提醒过的「过多玻璃效果」反模式。
             }
         }
-        .navigationTitle("NeatJSON")
+        .safeAreaInset(edge: .bottom, spacing: 0) { StatusBarView() }
         .fileImporter(
             isPresented: Bindable(model).importerPresented,
             allowedContentTypes: [.json, .plainText]
@@ -118,7 +122,7 @@ struct MainEditorView: View {
 
     private func editorCard(role: JSONEditorView.Role) -> some View {
         editorContent(role: role)
-            .background(.regularMaterial, in: cardShape)
+            .background(.thickMaterial, in: cardShape)
             .clipShape(cardShape)
             .overlay(cardShape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
             .overlay(alignment: .topLeading) {
@@ -174,7 +178,9 @@ struct MainEditorView: View {
         guard case .success(let url) = result else { return }
         let accessing = url.startAccessingSecurityScopedResource()
         defer {
-            if accessing { url.stopAccessingSecurityScopedResource() }
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
         }
         if let text = try? String(contentsOf: url, encoding: .utf8) {
             model.inputText = text
