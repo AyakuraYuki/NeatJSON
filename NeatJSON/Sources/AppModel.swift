@@ -27,7 +27,18 @@ final class AppModel {
 
     /// 缩进风格，切换后立即重排。
     var indent: IndentStyle = .spaces2 {
-        didSet { reformat() }
+        didSet {
+            guard indent != oldValue else { return }
+            reformat()
+        }
+    }
+
+    /// 对象 key 的排序规则，切换后立即重排。
+    var keyOrder: JSONKeyOrder = .codepoint {
+        didSet {
+            guard keyOrder != oldValue else { return }
+            reformat()
+        }
     }
 
     /// diff 快照的代次。0 = 尚未生成过快照（diff 窗口显示空态）；
@@ -63,8 +74,13 @@ final class AppModel {
     private(set) var isInputBlank: Bool = true
 
     /// 供测试与预览注入。
-    init(inputText: String = "", indent: IndentStyle = .spaces2) {
+    init(
+        inputText: String = "",
+        indent: IndentStyle = .spaces2,
+        keyOrder: JSONKeyOrder = .codepoint
+    ) {
         self.indent = indent
+        self.keyOrder = keyOrder
         self.inputText = inputText
         // Swift 初始化期属性观察器不触发，这里显式执行首次格式化。
         reformat()
@@ -83,6 +99,7 @@ final class AppModel {
     func reformat() {
         let text = inputText
         let indent = indent
+        let keyOrder = keyOrder
 
         reformatTask?.cancel()
         reformatTask = nil
@@ -102,7 +119,9 @@ final class AppModel {
 
         if text.utf8.count <= Self.asyncThreshold {
             inputCharacterCount = text.count
-            applyFormatResult(Self.computeFormat(text: text, indent: indent))
+            applyFormatResult(
+                Self.computeFormat(text: text, indent: indent, keyOrder: keyOrder)
+            )
             return
         }
 
@@ -113,7 +132,9 @@ final class AppModel {
             let outcome = await Task.detached(priority: .userInitiated) {
                 (
                     characters: text.count,
-                    result: Self.computeFormat(text: text, indent: indent)
+                    result: Self.computeFormat(
+                        text: text, indent: indent, keyOrder: keyOrder
+                    )
                 )
             }.value
             guard !Task.isCancelled, let self else { return }
@@ -125,13 +146,19 @@ final class AppModel {
     /// 解析 + 排序 + 序列化的纯计算部分（可安全地在任意线程执行）。
     private nonisolated static func computeFormat(
         text: String,
-        indent: IndentStyle
+        indent: IndentStyle,
+        keyOrder: JSONKeyOrder
     ) -> Result<String, JSONParseError> {
         do {
             let value = try JSONParser.parse(text)
             // 不补尾随换行：编辑器里那会多出一个空行，复制出去也多一个换行。
             return .success(
-                JSONSerializer.serialize(value, indent: indent, trailingNewline: false)
+                JSONSerializer.serialize(
+                    value,
+                    indent: indent,
+                    keyOrder: keyOrder,
+                    trailingNewline: false
+                )
             )
         } catch let error as JSONParseError {
             return .failure(error)

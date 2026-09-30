@@ -9,6 +9,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(PreferenceKey.appearanceMode) private var appearanceMode: AppearanceMode = .system
     @AppStorage(PreferenceKey.editorFontSize) private var editorFontSize: Double = EditorFontMetrics.standard
+    @AppStorage(PreferenceKey.keyOrder) private var keyOrder: JSONKeyOrder = .codepoint
 
     var body: some View {
         Form {
@@ -18,6 +19,16 @@ struct SettingsView: View {
             ) {
                 ForEach(AppearanceMode.allCases) { mode in
                     Label(mode.label, systemImage: mode.icon).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Picker(
+                String(localized: "settings.key-order.title", defaultValue: "Key order"),
+                selection: $keyOrder
+            ) {
+                ForEach(JSONKeyOrder.allCases) { order in
+                    Text(order.label).tag(order)
                 }
             }
             .pickerStyle(.segmented)
@@ -35,6 +46,9 @@ struct SettingsView: View {
         .font(.system(size: 14))
         .padding(24)
         .frame(width: 460)
+        // 设置面板改动后主窗口的 `AppModel` 需要跟上；设置窗口与主窗口
+        // 各自持有 `@AppStorage`，靠 UserDefaults 的变更通知回流不现实，
+        // 主窗口侧在每次激活时对齐（见 MainEditorView 的偏好同步）。
     }
 }
 

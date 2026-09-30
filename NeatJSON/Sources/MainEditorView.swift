@@ -14,6 +14,7 @@ struct MainEditorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @AppStorage(PreferenceKey.editorFontSize) private var editorFontSize: Double = EditorFontMetrics.standard
+    @AppStorage(PreferenceKey.keyOrder) private var storedKeyOrder: JSONKeyOrder = .codepoint
 
     /// 文件导入读取失败时的提示。
     @State private var importFailed = false
@@ -33,47 +34,40 @@ struct MainEditorView: View {
             )
         )
         .navigationTitle("NeatJSON")
+        .syncingEditorPreferences(
+            keyOrder: storedKeyOrder,
+            into: model
+        )
         .toolbar {
             ToolbarSpacer(.flexible)
 
-            ToolbarItem {
+            ToolbarItemGroup {
                 Button {
                     model.copyOutput()
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
-                .buttonStyle(.glass)
                 .help(String(localized: "action.copy.help", defaultValue: "Copy formatted result"))
                 .disabled(model.outputText.isEmpty)
-            }
 
-            ToolbarSpacer(.fixed)
-
-            ToolbarItem {
                 Button {
                     presentDiffWindow()
                 } label: {
                     Image(systemName: "arrow.left.arrow.right")
                 }
-                .buttonStyle(.glass)
                 .help(String(localized: "action.diff.help", defaultValue: "Compare input and output"))
                 .disabled(!model.canShowDiff)
-            }
 
-            ToolbarSpacer(.fixed)
-
-            ToolbarItem {
                 Button {
                     model.clearAll()
                 } label: {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.glass)
                 .help(String(localized: "action.clear.help", defaultValue: "Clear input"))
                 .disabled(model.inputText.isEmpty)
             }
 
-            ToolbarSpacer(.flexible)
+            ToolbarSpacer(.fixed)
 
             ToolbarItem {
                 Picker(
@@ -187,6 +181,38 @@ struct MainEditorView: View {
         } else {
             importFailed = true
         }
+    }
+}
+
+/// 把持久化的编辑器偏好灌进 `AppModel`。
+///
+/// 偏好存在 `UserDefaults`（`@AppStorage`），管线参数活在 `AppModel` 里，
+/// 中间需要一次显式同步：设置面板在独立窗口改值，主窗口不会收到视图级
+/// 通知，只有 `UserDefaults` 的 KVO 通知——`@AppStorage` 正是靠它更新的，
+/// 所以这里监听同一个 `@AppStorage` 属性即可覆盖「设置里改」与
+/// 「跨会话启动」两条路径。
+///
+/// 仅在值真的变化时才写回，避免每次视图重建都触发一次全量重排；
+/// `reformat()` 本身也会取消上一次任务，重复调用不会堆积。
+private struct EditorPreferenceSync: ViewModifier {
+    let keyOrder: JSONKeyOrder
+    let model: AppModel
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { model.keyOrder = keyOrder }
+            .onChange(of: keyOrder) { _, newValue in
+                model.keyOrder = newValue
+            }
+    }
+}
+
+private extension View {
+    func syncingEditorPreferences(
+        keyOrder: JSONKeyOrder,
+        into model: AppModel
+    ) -> some View {
+        modifier(EditorPreferenceSync(keyOrder: keyOrder, model: model))
     }
 }
 

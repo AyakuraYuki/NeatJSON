@@ -42,21 +42,22 @@ extension JSONValue: CustomStringConvertible {
 }
 
 public extension JSONValue {
-    /// 按 key 字典序（Unicode 标量逐码点）升序排列所有对象，
-    /// 递归应用于任意嵌套深度（含数组内的对象元素）。
+    /// 按 key 升序排列所有对象，递归应用于任意嵌套深度（含数组内的对象元素）。
+    ///
+    /// - Parameter order: key 排序规则，默认码点序（与 `JSONSerializer` 的默认一致）。
     ///
     /// 仅测试使用：主管线在 `JSONSerializer` 写出每个对象时就地排序，
-    /// 不再整树重建；本方法作为排序语义的参照实现保留。
-    func sorted() -> JSONValue {
+    /// 不再整树重建；本方法作为排序语义的参照实现保留，两处规则必须一致。
+    func sorted(order: JSONKeyOrder = .codepoint) -> JSONValue {
         switch self {
         case let .object(members):
             .object(
                 members
-                    .map { ($0.0, $0.1.sorted()) }
-                    .sorted { $0.0 < $1.0 }
+                    .map { ($0.0, $0.1.sorted(order: order)) }
+                    .sorted { order.areInIncreasingOrder($0.0, $1.0) }
             )
         case let .array(items):
-            .array(items.map { $0.sorted() })
+            .array(items.map { $0.sorted(order: order) })
         case .string, .number, .bool, .null:
             self
         }

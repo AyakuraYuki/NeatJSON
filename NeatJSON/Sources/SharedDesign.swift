@@ -15,6 +15,8 @@ let colorDarkText = NSColor(srgbRed: 0.92, green: 0.92, blue: 0.95, alpha: 1)
 enum PreferenceKey {
     static let appearanceMode = "appearanceMode"
     static let editorFontSize = "editorFontSize"
+    /// 对象 key 排序规则（`JSONKeyOrder.rawValue`）。
+    static let keyOrder = "keyOrder"
 }
 
 /// 编辑器字号的允许范围。菜单命令（⌘+ / ⌘- / ⌘0）与设置面板共用，

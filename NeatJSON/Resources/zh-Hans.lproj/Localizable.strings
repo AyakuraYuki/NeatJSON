@@ -24,7 +24,7 @@
 
 "menu.help" = "NeatJSON 帮助";
 "help.window.title" = "NeatJSON 帮助";
-"help.overview" = "在左侧输入或粘贴 JSON，会自动格式化并按键排序；缩进风格在工具栏切换，右侧结果随时可复制。";
+"help.overview" = "在左侧输入或粘贴 JSON，会自动格式化并按键排序；缩进风格在工具栏切换，键排序方式在设置里选择，右侧结果随时可复制。";
 "help.section.file" = "文件";
 "help.section.edit" = "编辑";
 "help.section.view" = "显示";
@@ -62,6 +62,7 @@
 "settings.appearance.system" = "跟随系统";
 "settings.appearance.light" = "日间";
 "settings.appearance.dark" = "夜间";
+"settings.key-order.title" = "键排序";
 "settings.font-size.title" = "编辑器字号：%lld pt";
 
 "error.at-position" = "第 %lld 行第 %lld 列：%@";

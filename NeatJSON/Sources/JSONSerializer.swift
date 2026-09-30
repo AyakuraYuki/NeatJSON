@@ -33,16 +33,18 @@ public enum JSONSerializer {
     ///   - value: 解析得到的值。
     ///   - indent: 缩进风格。
     ///   - sortKeys: 是否按键排序（默认开）。
+    ///   - keyOrder: key 排序规则（默认码点序，与旧行为一致）。
     ///   - trailingNewline: 末尾是否补换行（编辑器展示用，默认 true）。
     public static func serialize(
         _ value: JSONValue,
         indent: IndentStyle = .spaces2,
         sortKeys: Bool = true,
+        keyOrder: JSONKeyOrder = .codepoint,
         trailingNewline: Bool = true
     ) -> String {
         // 注意：不再先 `value.sorted()` 复制整棵树，而是在写每个对象时就地
         // 排序它自己的成员——输出完全一致，但省掉一整棵树的重建。
-        var writer = Writer(indent: indent, sortKeys: sortKeys)
+        var writer = Writer(indent: indent, sortKeys: sortKeys, keyOrder: keyOrder)
         writer.writeValue(value, depth: 0)
         if trailingNewline {
             writer.out.append("\n")
@@ -53,14 +55,16 @@ public enum JSONSerializer {
     private struct Writer {
         let indent: IndentStyle
         let sortKeys: Bool
+        let keyOrder: JSONKeyOrder
         var out: String = ""
         /// 按深度缓存的缩进串。旧实现每写一行都 `String(repeating:)`，
         /// 十万行就是十万次字符串分配。
         private var pads: [String] = [""]
 
-        init(indent: IndentStyle, sortKeys: Bool) {
+        init(indent: IndentStyle, sortKeys: Bool, keyOrder: JSONKeyOrder) {
             self.indent = indent
             self.sortKeys = sortKeys
+            self.keyOrder = keyOrder
             out.reserveCapacity(4096)
         }
 
@@ -93,7 +97,11 @@ public enum JSONSerializer {
                 out += "{}"
                 return
             }
-            let ordered = sortKeys ? members.sorted { $0.0 < $1.0 } : members
+            // 比较器无分配、绝大多数 key 在前几个字节就分出胜负；
+            // 码点序分支直接走标准库比较，不比旧的 `$0.0 < $1.0` 慢。
+            let ordered = sortKeys
+                ? members.sorted { keyOrder.areInIncreasingOrder($0.0, $1.0) }
+                : members
             out += "{\n"
             let inner = pad(depth + 1)
             let last = ordered.count - 1

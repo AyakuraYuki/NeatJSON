@@ -356,6 +356,369 @@ final class JSONEngineTests: XCTestCase {
         XCTAssertLessThan(aLowerIdx, bIdx)
     }
 
+    // MARK: - key 排序规则
+
+    /// alphabetic：字母数字忽略大小写优先，分隔符整组殿后。
+    func testAlphabeticKeyOrder() throws {
+        let output = try JSONSerializer.serialize(
+            JSONParser.parse(#"{"B":1,"a":2,"A":3,"b":4,"0":5,"9":6,"z":7,"Z":8}"#),
+            keyOrder: .alphabetic,
+            trailingNewline: false
+        )
+        let ordered = try keyNames(in: output)
+        // 字母数字同组按码点：数字（0x30–0x39）先于字母（0x61+）。
+        // 大小写不参与主序，同字母的两种写法权重相等，由兜底规则定序（大写在前）。
+        XCTAssertEqual(ordered, ["0", "9", "A", "a", "B", "b", "Z", "z"])
+    }
+
+    /// 大小写不参与主序：同字母的两种写法权重相等，但必须有确定先后
+    /// （否则严格弱序出等价类，排序结果取决于输入顺序）。
+    ///
+    /// 兜底规则是原始字节比较，即大写在前。
+    func testAlphabeticIgnoresCaseButStaysTotal() throws {
+        let value = try JSONParser.parse(#"{"ayrt02":1,"AYRT02":2,"Ayrt02":3}"#)
+        let names = try keyNames(
+            in: JSONSerializer.serialize(value, keyOrder: .alphabetic, trailingNewline: false)
+        )
+        XCTAssertEqual(names.count, 3, "三个 key 一个都不能丢")
+        XCTAssertEqual(names, ["AYRT02", "Ayrt02", "ayrt02"], "大写在前")
+
+        // 严格弱序：任意两个不同的 key，恰有一个方向成立。
+        let order = JSONKeyOrder.alphabetic
+        for lhs in names {
+            for rhs in names where lhs != rhs {
+                XCTAssertNotEqual(
+                    order.areInIncreasingOrder(lhs, rhs),
+                    order.areInIncreasingOrder(rhs, lhs),
+                    "\(lhs) 与 \(rhs) 的先后不唯一"
+                )
+            }
+        }
+    }
+
+    /// 分隔符整组殿后：`Customer` 排在 `C_CSDN` 之前（第三位 u 对 _）。
+    func testAlphabeticPutsSeparatorsAfterAlphanumerics() throws {
+        let output = try JSONSerializer.serialize(
+            JSONParser.parse(#"{"C_CSDN":1,"Customer":2,"caih_dev":3,"CAIH":4}"#),
+            keyOrder: .alphabetic,
+            trailingNewline: false
+        )
+        XCTAssertEqual(try keyNames(in: output), ["CAIH", "caih_dev", "Customer", "C_CSDN"])
+    }
+
+    /// 非 ASCII 一律落在最后一组，组内按码点序。
+    func testAlphabeticKeyOrderPutsNonASCIILast() throws {
+        let output = try JSONSerializer.serialize(
+            JSONParser.parse(#"{"中":1,"9":2,"é":3,"z":4,"!":5}"#),
+            keyOrder: .alphabetic,
+            trailingNewline: false
+        )
+        // 数字（组 0）与字母 z 同组，0x30 < 0x7A；! 是其他 ASCII（组 1）殿后；
+        // 非 ASCII（组 2）最后，组内码点序：é U+00E9 < 中 U+4E2D。
+        XCTAssertEqual(try keyNames(in: output), ["9", "z", "!", "é", "中"])
+    }
+
+    /// 前缀较短的 key 排在前面，空 key 排最前。
+    func testAlphabeticKeyOrderPrefixes() throws {
+        let output = try JSONSerializer.serialize(
+            JSONParser.parse(#"{"ab":1,"":2,"a":3,"aB":4,"Aa":5}"#),
+            keyOrder: .alphabetic,
+            trailingNewline: false
+        )
+        // 逐位看：空串最先；"a" 是其余全部的前缀；剩下的第一位都是 a，
+        // 第二位 a < b，故 Aa 一族先于 aB/ab。aB 与 ab 权重全等，
+        // 由兜底规则定序：B(0x42) < b(0x62)，所以 aB 在前。
+        XCTAssertEqual(try keyNames(in: output), ["", "a", "Aa", "aB", "ab"])
+    }
+
+    /// alphabetic 与 codepoint 覆盖同一份 key 集合，只有顺序不同。
+    func testBothKeyOrdersCoverSameKeys() throws {
+        let value = try JSONParser.parse(#"{"b":1,"A":2,"a":3,"0":4,"中":5,"Z":6}"#)
+        for order in JSONKeyOrder.allCases {
+            let names = try keyNames(
+                in: JSONSerializer.serialize(value, keyOrder: order, trailingNewline: false)
+            )
+            XCTAssertEqual(names.sorted(), ["0", "A", "Z", "a", "b", "中"], "\(order) 丢了 key")
+        }
+    }
+
+    /// codepoint 仍是旧行为：大写在小写之前；不传参数时也用它。
+    func testCodepointKeyOrderIsDefault() throws {
+        let value = try JSONParser.parse(#"{"b":1,"a":2,"A":3}"#)
+        XCTAssertEqual(
+            try keyNames(in: JSONSerializer.serialize(value, trailingNewline: false)),
+            ["A", "a", "b"],
+            "默认参数必须保持码点序"
+        )
+        XCTAssertEqual(
+            try keyNames(
+                in: JSONSerializer.serialize(
+                    value, keyOrder: .codepoint, trailingNewline: false
+                )
+            ),
+            ["A", "a", "b"]
+        )
+    }
+
+    /// 嵌套与数组内的对象同样按规则递归排序。
+    func testAlphabeticKeyOrderAppliesRecursively() throws {
+        let output = try JSONSerializer.serialize(
+            JSONParser.parse(#"{"z":[{"b":1,"A":2}],"a":{"B":1,"c":2}}"#),
+            keyOrder: .alphabetic,
+            trailingNewline: false
+        )
+        XCTAssertEqual(
+            output,
+            """
+            {
+              "a": {
+                "B": 1,
+                "c": 2
+              },
+              "z": [
+                {
+                  "A": 2,
+                  "b": 1
+                }
+              ]
+            }
+            """
+        )
+    }
+
+    /// 参照实现 `sorted(order:)` 必须与序列化器逐字节一致。
+    func testSortedReferenceMatchesSerializer() throws {
+        let input = #"{"Z":1,"a":[{"B_":2,"0x":3}],"中":{"é":4,"A":5}}"#
+        let value = try JSONParser.parse(input)
+        for order in JSONKeyOrder.allCases {
+            XCTAssertEqual(
+                JSONSerializer.serialize(value.sorted(order: order), keyOrder: order),
+                JSONSerializer.serialize(value, keyOrder: order),
+                "\(order) 下参照实现与序列化器不一致"
+            )
+        }
+    }
+
+    /// 与「逐标量按权重比较」的朴素实现对拍，覆盖大量 key 组合。
+    func testAlphabeticOrderMatchesNaiveScalarComparator() {
+        // 独立于实现重写一遍规则：组 0 = 字母（折叠大小写）与数字、组 1 = 其他
+        // ASCII、组 2 = 非 ASCII，组内按值；权重全等时退回原始字符串比较。
+        func weight(_ scalar: Unicode.Scalar) -> UInt32 {
+            if scalar.value < 0x80 {
+                if (0x41 ... 0x5A).contains(scalar.value) { return UInt32(scalar.value | 0x20) }
+                if (0x61 ... 0x7A).contains(scalar.value) { return UInt32(scalar.value) }
+                if (0x30 ... 0x39).contains(scalar.value) { return UInt32(scalar.value) }
+                return 0x1_0000 | scalar.value
+            }
+            return 0x2_0000 | scalar.value
+        }
+        func naive(_ lhs: String, _ rhs: String) -> Bool {
+            let left = lhs.unicodeScalars.map(weight)
+            let right = rhs.unicodeScalars.map(weight)
+            for (a, b) in zip(left, right) where a != b {
+                return a < b
+            }
+            if left.count != right.count { return left.count < right.count }
+            return lhs < rhs // 权重全等：仅大小写不同，退回原始比较
+        }
+
+        let alphabet: [Unicode.Scalar] = [
+            "a", "z", "A", "Z", "0", "9", "_", " ", "!", "~", "é", "中", "α", "Ж", "🙂",
+        ]
+        var pool: [String] = [""]
+        for length in 1 ... 3 {
+            pool += alphabet.map(String.init).flatMap { scalar in
+                length == 1 ? [scalar] : alphabet.map { String($0) + scalar }
+            }
+        }
+        pool = Array(pool.prefix(2000))
+
+        for lhs in pool {
+            for rhs in pool {
+                XCTAssertEqual(
+                    JSONKeyOrder.alphabetic.areInIncreasingOrder(lhs, rhs),
+                    naive(lhs, rhs),
+                    "比较器与朴素实现在 \(lhs.debugDescription) / \(rhs.debugDescription) 上分叉"
+                )
+            }
+        }
+    }
+
+    /// 排序规则对输出长度与内容没有影响，只有顺序变化。
+    func testKeyOrderDoesNotChangeContent() throws {
+        let value = try JSONParser.parse(#"{"b":[1,{"q":0,"p":1}],"a":"x","中":"y"}"#)
+
+        func normalized(_ text: String) -> [String] {
+            text.split(separator: "\n")
+                .map { line -> String in
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    return trimmed.hasSuffix(",") ? String(trimmed.dropLast()) : trimmed
+                }
+                .sorted()
+        }
+
+        let codepoint = normalized(JSONSerializer.serialize(value, keyOrder: .codepoint))
+        let alphabetic = normalized(JSONSerializer.serialize(value, keyOrder: .alphabetic))
+        XCTAssertEqual(codepoint, alphabetic)
+    }
+
+/// 真实业务数据的整串 key 顺序回归。
+///
+/// 输入故意逆序给出，期望顺序写死——这条用例同时验证「字母数字优先 +
+/// 忽略大小写 + 分隔符殿后」三条规则联合作用的结果，是这套排序规则的
+/// 端到端契约。任何一条规则的改动都会在这里立刻暴露。
+func testRealWorldKeyOrderRegression() throws {
+    let input = #"""
+{
+    "通信分组": 0,
+    "算法备案": 0,
+    "ZT02/Claude": 0,
+    "ZSYY01/GLM": 0,
+    "ZF02/Gemini": 0,
+    "ZF01": 0,
+    "YQ02/GPT": 0,
+    "YQ02/Gemini": 0,
+    "YQ02/Claude": 0,
+    "YQ01/Seedance": 0,
+    "XLX01/Kimi": 0,
+    "XLX01/GLM53": 0,
+    "XLX01/GLM": 0,
+    "WY01/kimi": 0,
+    "WY01/glm": 0,
+    "WW01/GLM": 0,
+    "WW01/Free": 0,
+    "WS02/Gpt": 0,
+    "WS02/Gemini": 0,
+    "WS02/Claude": 0,
+    "WS01/Qwen": 0,
+    "WS01/Kimi": 0,
+    "WS01/Glm/DeepSeek/Qwen": 0,
+    "WS01/Glm": 0,
+    "WS01/Embedding": 0,
+    "WS01/Anthropic/DeepSeek": 0,
+    "vip": 0,
+    "VE01/Seedream": 0,
+    "VE01/Seed": 0,
+    "VE01/Kimi": 0,
+    "VE01/DS": 0,
+    "TX01/TokenHub/Qwen": 0,
+    "TX01/TokenHub/MiniMax01": 0,
+    "TX01/TokenHub/Kimi": 0,
+    "TX01/TokenHub/Hy": 0,
+    "TX01/TokenHub/Glm": 0,
+    "TX01/TokenHub/Deepseek02": 0,
+    "TX01/TokenHub/Deepseek01": 0,
+    "TH01/Kimi": 0,
+    "t2": 0,
+    "t1": 0,
+    "SZZW01": 0,
+    "SZTY02/gpt": 0,
+    "SZTY02/gemini": 0,
+    "svip": 0,
+    "ST01/Zhipu": 0,
+    "SJS01/Seedance02": 0,
+    "SJS01/Seedance01": 0,
+    "shanghai_1": 0,
+    "QDBS02/Meta": 0,
+    "QDBS02/GPT": 0,
+    "QDBS02/Gork": 0,
+    "QDBS02/Gemini": 0,
+    "QDBS02/Bench": 0,
+    "QDBS01/Qwen": 0,
+    "Primalai01/Kimi/09s": 0,
+    "Primalai01/Kimi/09": 0,
+    "Primalai01/Kimi": 0,
+    "OXO01/Kimi": 0,
+    "OXO01/GLM": 0,
+    "OPENAI02/gpt-Image": 0,
+    "nexusvoid01/kimi": 0,
+    "neutoken01/kimi": 0,
+    "NA02/xAI": 0,
+    "NA02/Vertex/sp": 0,
+    "NA02/OpenAI": 0,
+    "NA02/Azure/sp": 0,
+    "NA02/Azure": 0,
+    "NA02/AWS/sp": 0,
+    "NA02/AWS": 0,
+    "NA02/AIStudio/sp2": 0,
+    "NA01/VolcEngine": 0,
+    "NA01/Open-Source-Group2": 0,
+    "NA01/Open-Source-Group1": 0,
+    "NA01/Aliyun": 0,
+    "LSWH01/kimi": 0,
+    "LSWH01/glm": 0,
+    "KQ01/kimi": 0,
+    "KQ01/glm": 0,
+    "KQ01/deepseek": 0,
+    "JIX01/Kimi": 0,
+    "JIX01/GLM": 0,
+    "JIX01/Bench": 0,
+    "JD01/Kimi": 0,
+    "JD01/GLM": 0,
+    "invite_external_customer_global": 0,
+    "HWZL01/Seedance25": 0,
+    "HWZL01/Seedance": 0,
+    "HWZL01/Qwen": 0,
+    "GZLJ01/kimi": 0,
+    "GZLJ01/GLM": 0,
+    "GJ01/Qwen": 0,
+    "draft": 0,
+    "default": 0,
+    "C_ZHIYUAN": 0,
+    "C_YIDONG": 0,
+    "C_NEXDATA": 0,
+    "C_MIANBI": 0,
+    "C_CSDN": 0,
+    "Customer": 0,
+    "CAIH_EPBIZ": 0,
+    "caih_dev_yuliao": 0,
+    "caih_dev_sale": 0,
+    "CAIH_AI_SZ": 0,
+    "burncloud/kimi": 0,
+    "BJTH01/Seedance": 0,
+    "BJTH01/Kimi": 0,
+    "BJTH01/GLM": 0,
+    "baseline-benchmark": 0,
+    "B2YJ02/Seedance": 0,
+    "B2YJ02/Gpt/Claude/Gemini": 0,
+    "B2YJ01/Kimi": 0,
+    "B1JZ02/ZK04": 0,
+    "B1JZ01/Seedance": 0,
+    "b1": 0,
+    "AYRT02/Fable": 0,
+    "AYRT02/Codex": 0,
+    "AYRT02/Claude": 0,
+    "auto": 0,
+    "ALI01/Qwen": 0,
+    "ALI01/Glm": 0,
+    "ALI01": 0,
+    "aiport02/gemini": 0
+}
+"""#
+
+    let output = JSONSerializer.serialize(
+        try JSONParser.parse(input),
+        keyOrder: .alphabetic,
+        trailingNewline: false
+    )
+    XCTAssertEqual(
+        try keyNames(in: output).joined(separator: "\n"),
+        "aiport02/gemini\nALI01\nALI01/Glm\nALI01/Qwen\nauto\nAYRT02/Claude\nAYRT02/Codex\nAYRT02/Fable\nb1\nB1JZ01/Seedance\nB1JZ02/ZK04\nB2YJ01/Kimi\nB2YJ02/Gpt/Claude/Gemini\nB2YJ02/Seedance\nbaseline-benchmark\nBJTH01/GLM\nBJTH01/Kimi\nBJTH01/Seedance\nburncloud/kimi\nCAIH_AI_SZ\ncaih_dev_sale\ncaih_dev_yuliao\nCAIH_EPBIZ\nCustomer\nC_CSDN\nC_MIANBI\nC_NEXDATA\nC_YIDONG\nC_ZHIYUAN\ndefault\ndraft\nGJ01/Qwen\nGZLJ01/GLM\nGZLJ01/kimi\nHWZL01/Qwen\nHWZL01/Seedance\nHWZL01/Seedance25\ninvite_external_customer_global\nJD01/GLM\nJD01/Kimi\nJIX01/Bench\nJIX01/GLM\nJIX01/Kimi\nKQ01/deepseek\nKQ01/glm\nKQ01/kimi\nLSWH01/glm\nLSWH01/kimi\nNA01/Aliyun\nNA01/Open-Source-Group1\nNA01/Open-Source-Group2\nNA01/VolcEngine\nNA02/AIStudio/sp2\nNA02/AWS\nNA02/AWS/sp\nNA02/Azure\nNA02/Azure/sp\nNA02/OpenAI\nNA02/Vertex/sp\nNA02/xAI\nneutoken01/kimi\nnexusvoid01/kimi\nOPENAI02/gpt-Image\nOXO01/GLM\nOXO01/Kimi\nPrimalai01/Kimi\nPrimalai01/Kimi/09\nPrimalai01/Kimi/09s\nQDBS01/Qwen\nQDBS02/Bench\nQDBS02/Gemini\nQDBS02/Gork\nQDBS02/GPT\nQDBS02/Meta\nshanghai_1\nSJS01/Seedance01\nSJS01/Seedance02\nST01/Zhipu\nsvip\nSZTY02/gemini\nSZTY02/gpt\nSZZW01\nt1\nt2\nTH01/Kimi\nTX01/TokenHub/Deepseek01\nTX01/TokenHub/Deepseek02\nTX01/TokenHub/Glm\nTX01/TokenHub/Hy\nTX01/TokenHub/Kimi\nTX01/TokenHub/MiniMax01\nTX01/TokenHub/Qwen\nVE01/DS\nVE01/Kimi\nVE01/Seed\nVE01/Seedream\nvip\nWS01/Anthropic/DeepSeek\nWS01/Embedding\nWS01/Glm\nWS01/Glm/DeepSeek/Qwen\nWS01/Kimi\nWS01/Qwen\nWS02/Claude\nWS02/Gemini\nWS02/Gpt\nWW01/Free\nWW01/GLM\nWY01/glm\nWY01/kimi\nXLX01/GLM\nXLX01/GLM53\nXLX01/Kimi\nYQ01/Seedance\nYQ02/Claude\nYQ02/Gemini\nYQ02/GPT\nZF01\nZF02/Gemini\nZSYY01/GLM\nZT02/Claude\n算法备案\n通信分组"
+    )
+}
+    /// 从输出里按出现顺序取出顶层键名。
+    ///
+    /// 用 `JSONParser` 解析回值对象再读 key——手写扫描要去处理嵌套、
+    /// 字符串内的 `{`/`:`/`,`，任何一处疏漏都会让测试假通过。
+    /// 注意解析器保留插入序，这个顺序就是序列化器写出的顺序。
+    private func keyNames(in output: String) throws -> [String] {
+        guard case let .object(members) = try JSONParser.parse(output) else {
+            XCTFail("输出不是对象")
+            return []
+        }
+        return members.map(\.0)
+    }
+
     // MARK: - 不排序序列化（diff 左侧规范化依赖它）
 
     func testSerializeKeepsOriginalOrderWhenNotSorting() throws {

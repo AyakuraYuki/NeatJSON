@@ -22,7 +22,8 @@
 		81E21935EF106844102DEA31 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED7607B6609F363111CD01EE /* SettingsView.swift */; };
 		8730A80CAD3F348F4E2C20F4 /* MainEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04B82BD0C4EF787364996A9 /* MainEditorView.swift */; };
 		99155C1F63A7A8288A38F621 /* NeatJSONApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DD3DAA0D4C5886D8200276 /* NeatJSONApp.swift */; };
-		D0228C1F303DB3BB001D73AD /* SharedDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0228C1E303DB3A1001D73AD /* SharedDesign.swift */; };
+		C10740A690D9EA4296CEA759 /* SharedDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C04723C49A1CA0CEFCAFB02 /* SharedDesign.swift */; };
+		D62565F1464952309AFE17D6 /* JSONKeyOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E9345824BA522F1B7B64B1 /* JSONKeyOrder.swift */; };
 		E8B9EF124A6FFD851820B0E9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4191D55F1F0A9C2CD0D10C59 /* main.swift */; };
 		F2D95188A898842FD4A46A14 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FC28F195E5DFA011F794419 /* JSONValue.swift */; };
 		F7AFDD04DF2721F3B78D44E5 /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063578CC279909C40D6D5873 /* DiffView.swift */; };
@@ -50,6 +51,7 @@
 		35A87D114E3283022229FB7D /* AppearanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceController.swift; sourceTree = "<group>"; };
 		3E90E3C46C2719CD781AA497 /* DiffEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffEngineTests.swift; sourceTree = "<group>"; };
 		4191D55F1F0A9C2CD0D10C59 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		4C04723C49A1CA0CEFCAFB02 /* SharedDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDesign.swift; sourceTree = "<group>"; };
 		5571912FC35145D712C68CCC /* IconComposer */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = IconComposer; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C8276C67B795ECF64800AC1 /* NeatJSON.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NeatJSON.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FC28F195E5DFA011F794419 /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
@@ -58,7 +60,7 @@
 		A624717FE374308E0D73D598 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		A834188E488D0073A02C2563 /* JSONSerializer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONSerializer.swift; sourceTree = "<group>"; };
 		C04B82BD0C4EF787364996A9 /* MainEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainEditorView.swift; sourceTree = "<group>"; };
-		D0228C1E303DB3A1001D73AD /* SharedDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDesign.swift; sourceTree = "<group>"; };
+		E9E9345824BA522F1B7B64B1 /* JSONKeyOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONKeyOrder.swift; sourceTree = "<group>"; };
 		ED4D4B7444995DB1A3B3931D /* DiffEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffEngine.swift; sourceTree = "<group>"; };
 		ED7607B6609F363111CD01EE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		FF625761AE339B63184739B7 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
@@ -114,13 +116,13 @@
 		E47485149327330EF7FA0A2E /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				D0228C1E303DB3A1001D73AD /* SharedDesign.swift */,
 				35A87D114E3283022229FB7D /* AppearanceController.swift */,
 				08E72A4E61E00C039143828B /* AppModel.swift */,
 				ED4D4B7444995DB1A3B3931D /* DiffEngine.swift */,
 				063578CC279909C40D6D5873 /* DiffView.swift */,
 				FF625761AE339B63184739B7 /* GlassComponents.swift */,
 				992562237FA5B072044B3D27 /* JSONEditorView.swift */,
+				E9E9345824BA522F1B7B64B1 /* JSONKeyOrder.swift */,
 				16A10903C1BC9728B8176519 /* JSONParser.swift */,
 				A834188E488D0073A02C2563 /* JSONSerializer.swift */,
 				1BC8CBEFCB2467043CD37869 /* JSONSyntaxHighlighter.swift */,
@@ -128,6 +130,7 @@
 				C04B82BD0C4EF787364996A9 /* MainEditorView.swift */,
 				91DD3DAA0D4C5886D8200276 /* NeatJSONApp.swift */,
 				ED7607B6609F363111CD01EE /* SettingsView.swift */,
+				4C04723C49A1CA0CEFCAFB02 /* SharedDesign.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -204,7 +207,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2660;
+				LastUpgradeCheck = 2700;
 			};
 			buildConfigurationList = 2361BC221779A1B24B339EB0 /* Build configuration list for PBXProject "NeatJSON" */;
 			developmentRegion = en;
@@ -260,14 +263,15 @@
 				F7AFDD04DF2721F3B78D44E5 /* DiffView.swift in Sources */,
 				0B6658B7661338A2A344E49B /* GlassComponents.swift in Sources */,
 				20FBF2EC99A05755307FAEE1 /* JSONEditorView.swift in Sources */,
+				D62565F1464952309AFE17D6 /* JSONKeyOrder.swift in Sources */,
 				0E83E4FE12DBE2D3504F0611 /* JSONParser.swift in Sources */,
 				199C9E4B86A4D0AC8B78E156 /* JSONSerializer.swift in Sources */,
 				5D7D36A003123C32CF883899 /* JSONSyntaxHighlighter.swift in Sources */,
 				F2D95188A898842FD4A46A14 /* JSONValue.swift in Sources */,
-				D0228C1F303DB3BB001D73AD /* SharedDesign.swift in Sources */,
 				8730A80CAD3F348F4E2C20F4 /* MainEditorView.swift in Sources */,
 				99155C1F63A7A8288A38F621 /* NeatJSONApp.swift in Sources */,
 				81E21935EF106844102DEA31 /* SettingsView.swift in Sources */,
+				C10740A690D9EA4296CEA759 /* SharedDesign.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -339,6 +343,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -442,6 +447,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;

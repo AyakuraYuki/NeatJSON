@@ -24,7 +24,7 @@
 
 "menu.help" = "NeatJSON Help";
 "help.window.title" = "NeatJSON Help";
-"help.overview" = "Type or paste JSON on the left — it is formatted and key-sorted automatically. Pick the indent style in the toolbar; the result on the right is ready to copy.";
+"help.overview" = "Type or paste JSON on the left — it is formatted and key-sorted automatically. Pick the indent style in the toolbar; the result on the right is ready to copy. Key order (letters first or code point) lives in Settings.";
 "help.section.file" = "File";
 "help.section.edit" = "Edit";
 "help.section.view" = "View";
@@ -62,6 +62,7 @@
 "settings.appearance.system" = "System";
 "settings.appearance.light" = "Light";
 "settings.appearance.dark" = "Dark";
+"settings.key-order.title" = "Key order";
 "settings.font-size.title" = "Editor text size: %lld pt";
 
 "error.at-position" = "Line %lld, Column %lld: %@";
